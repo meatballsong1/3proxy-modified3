@@ -661,7 +661,7 @@ app.post('/nodes/:id/speedtest/upload', (req, res) => {
 });
 
 // ─── START ───────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
+app.listen(PORT,'0.0.0.0', () => {
     console.log(`3Proxy dashboard → http://localhost:${PORT}`);
     console.log(`IP Auth: ${settings.ipAuthEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`Hotloop: ${hotloop.enabled ? 'ENABLED' : 'DISABLED'}`);
