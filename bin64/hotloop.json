@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "primaryNode": "node_1774480928842",
+  "fallbackNode": "node_1774482268795",
+  "primaryWeight": 900,
+  "threshold": 50,
+  "mode": "latency"
+}

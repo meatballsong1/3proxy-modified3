@@ -1,0 +1,432 @@
+const express = require('express');
+const fs      = require('fs');
+const path    = require('path');
+const { exec, execSync } = require('child_process');
+const https   = require('https');
+const app     = express();
+const PORT    = 3000;
+
+// ─── AUTH ────────────────────────────────────────────────────────────────────
+const USER  = 'oofbomb';
+const PASS  = 'malaop0989';
+const TOKEN = Buffer.from(`${USER}:${PASS}`).toString('base64');
+
+app.use((req, res, next) => {
+    if (req.method === 'GET' && (req.path === '/' || /\.(html|js|css|ico|png|woff2?)$/.test(req.path)))
+        return next();
+    const auth  = req.headers.authorization || '';
+    const token = auth.replace(/^(Bearer|Basic)\s+/i, '');
+    if (token === TOKEN) return next();
+    return res.status(401).json({ error: 'Unauthorized' });
+});
+
+app.use(express.json());
+app.use(express.text({ type: 'text/plain' }));
+app.use('/', express.static(path.join(__dirname, 'public')));
+
+// ─── FILE PATHS ──────────────────────────────────────────────────────────────
+const WL_FILE    = path.join(__dirname, 'whitelist.cfg');
+const CFG_FILE   = path.join(__dirname, '3proxy.cfg');
+const PROXY_EXE  = path.join(__dirname, '3proxy.exe');
+const NODES_FILE = path.join(__dirname, 'nodes.json');
+const CLIENTS_FILE = path.join(__dirname, 'clients.json');
+const SERVER_FILE  = __filename;
+
+// ─── TAILSCALE CONFIG ────────────────────────────────────────────────────────
+// Set your Tailscale API key and tailnet name here
+const TS_API_KEY  = process.env.TS_API_KEY  || 'tskey-api-kw8xy5TMZ611CNTRL-zu21D9HeRSchovFsCS1MRcN2nzgujDB2';
+const TS_TAILNET  = process.env.TS_TAILNET  || '-'; // use '-' for default tailnet
+
+// ─── IN-MEMORY STATE ─────────────────────────────────────────────────────────
+let activeConnections = new Set();
+let nodeRegistry      = loadJson(NODES_FILE, {});   // { nodeId: { ...meta } }
+let clientRegistry    = loadJson(CLIENTS_FILE, {}); // { tailscaleId: { ...meta } }
+let liveStats         = {};  // nodeId → { bytesIn, bytesOut, connCount, history[] }
+let tsDevices         = [];  // raw Tailscale API response, refreshed every 10s
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function loadJson(file, def) {
+    try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch { return def; }
+}
+function saveJson(file, data) {
+    fs.writeFileSync(file, JSON.stringify(data, null, 2));
+}
+function readWL() {
+    if (!fs.existsSync(WL_FILE)) return [];
+    return fs.readFileSync(WL_FILE, 'utf8').split('\n').map(l => l.trim()).filter(Boolean);
+}
+function tsRequest(method, endpoint, body) {
+    return new Promise((resolve, reject) => {
+        const url  = `https://api.tailscale.com/api/v2${endpoint}`;
+        const opts = {
+            method,
+            headers: {
+                'Authorization': `Bearer ${TS_API_KEY}`,
+                'Content-Type':  'application/json'
+            }
+        };
+        const req = https.request(url, opts, res => {
+            let data = '';
+            res.on('data', c => data += c);
+            res.on('end', () => {
+                try { resolve({ status: res.statusCode, body: JSON.parse(data) }); }
+                catch { resolve({ status: res.statusCode, body: data }); }
+            });
+        });
+        req.on('error', reject);
+        if (body) req.write(JSON.stringify(body));
+        req.end();
+    });
+}
+
+// ─── TAILSCALE POLLING ───────────────────────────────────────────────────────
+async function pollTailscale() {
+    if (TS_API_KEY === 'tskey-api-kw8xy5TMZ611CNTRL-zu21D9HeRSchovFsCS1MRcN2nzgujDB2') return;
+    try {
+        const { status, body } = await tsRequest('GET', `/tailnet/${TS_TAILNET}/devices`);
+        if (status === 200 && body.devices) {
+            tsDevices = body.devices;
+            // Auto-sync: update lastSeen and online status in nodeRegistry
+            tsDevices.forEach(dev => {
+                const node = Object.values(nodeRegistry).find(n => n.tailscaleId === dev.id || n.tailscaleIp === dev.addresses?.[0]);
+                if (node) {
+                    node.lastSeen = dev.lastSeen;
+                    node.online   = isOnline(dev.lastSeen);
+                    node.hostname = dev.hostname || node.hostname;
+                    node.tailscaleIp = dev.addresses?.[0] || node.tailscaleIp;
+                }
+            });
+            // Sync clients too
+            tsDevices.forEach(dev => {
+                const client = Object.values(clientRegistry).find(c => c.tailscaleId === dev.id);
+                if (client) {
+                    client.lastSeen = dev.lastSeen;
+                    client.online   = isOnline(dev.lastSeen);
+                    client.hostname = dev.hostname || client.hostname;
+                }
+            });
+            saveJson(NODES_FILE, nodeRegistry);
+            saveJson(CLIENTS_FILE, clientRegistry);
+        }
+    } catch(e) { console.warn('Tailscale poll error:', e.message); }
+}
+
+function isOnline(lastSeen) {
+    if (!lastSeen) return false;
+    return (Date.now() - new Date(lastSeen).getTime()) < 3 * 60 * 1000; // online if seen within 3 min
+}
+
+setInterval(pollTailscale, 10000);
+pollTailscale();
+
+// ─── WHITELIST ───────────────────────────────────────────────────────────────
+app.get('/whitelist', (req, res) => res.json({ whitelist: readWL() }));
+
+app.post('/whitelist', (req, res) => {
+    const ip = req.body.ip;
+    if (!ip || !/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return res.status(400).send('Invalid IP');
+    const lines = readWL();
+    const entry = `allow * ${ip}`;
+    if (!lines.includes(entry)) {
+        lines.push(entry);
+        fs.writeFileSync(WL_FILE, lines.join('\n') + '\n');
+        softRestart();
+    }
+    res.send('OK');
+});
+
+app.delete('/whitelist', (req, res) => {
+    const ip    = req.body.ip;
+    if (!ip) return res.status(400).send('Missing IP');
+    const entry = `allow * ${ip}`;
+    const lines = readWL().filter(l => l !== entry && l !== ip);
+    fs.writeFileSync(WL_FILE, lines.join('\n') + '\n');
+    softRestart();
+    res.send('OK');
+});
+
+// check if a given IP is whitelisted (used by extension)
+app.get('/whitelist/check', (req, res) => {
+    const ip = req.query.ip;
+    if (!ip) return res.status(400).json({ allowed: false });
+    const lines = readWL();
+    const allowed = lines.some(l => l.includes(ip));
+    res.json({ allowed, ip });
+});
+
+// ─── PROXY CONTROL ───────────────────────────────────────────────────────────
+function softRestart(cb) {
+    exec('taskkill /IM 3proxy.exe /F', () => {
+        setTimeout(() => exec(`start "" "${PROXY_EXE}" "${CFG_FILE}"`, err => cb && cb(err)), 500);
+    });
+}
+
+app.post('/restart',    (req, res) => softRestart(e => e ? res.status(500).send('Failed') : res.send('Restarted')));
+app.post('/start',      (req, res) => exec(`start "" "${PROXY_EXE}" "${CFG_FILE}"`, e => e ? res.status(500).send('Failed') : res.send('Started')));
+app.post('/stop',       (req, res) => exec('taskkill /IM 3proxy.exe /F', e => e ? res.status(500).send('Not running') : res.send('Stopped')));
+app.post('/restart-web',(req, res) => { res.send('Restarting…'); setTimeout(() => process.exit(0), 500); });
+app.post('/stop-web',   (req, res) => { res.send('Stopping…');   setTimeout(() => process.exit(0), 300); });
+
+app.post('/status', (req, res) => {
+    exec('tasklist /FI "IMAGENAME eq 3proxy.exe" /NH', (err, stdout) => {
+        res.send(stdout?.toLowerCase().includes('3proxy.exe') ? 'Running' : 'Not running');
+    });
+});
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+app.get('/config', (req, res) => {
+    if (!fs.existsSync(CFG_FILE)) return res.status(404).send('Not found');
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(fs.readFileSync(CFG_FILE, 'utf8'));
+});
+app.post('/config', (req, res) => {
+    if (typeof req.body !== 'string') return res.status(400).send('Expected text');
+    if (fs.existsSync(CFG_FILE)) fs.writeFileSync(CFG_FILE + '.bak', fs.readFileSync(CFG_FILE));
+    fs.writeFileSync(CFG_FILE, req.body);
+    res.send('Saved');
+});
+
+// ─── SERVER.JS SELF-EDIT ─────────────────────────────────────────────────────
+app.get('/server-source', (req, res) => {
+    res.setHeader('Content-Type', 'text/plain');
+    res.send(fs.readFileSync(SERVER_FILE, 'utf8'));
+});
+app.post('/server-source', (req, res) => {
+    if (typeof req.body !== 'string' || req.body.trim().length < 10)
+        return res.status(400).send('Too short');
+    fs.writeFileSync(SERVER_FILE + '.bak', fs.readFileSync(SERVER_FILE));
+    fs.writeFileSync(SERVER_FILE, req.body);
+    res.send('Saved');
+    setTimeout(() => process.exit(0), 400);
+});
+
+// ─── CONNECTIONS ─────────────────────────────────────────────────────────────
+const LOG_FILE = 'c:\\3proxy\\connections.log';
+if (fs.existsSync(LOG_FILE)) {
+    try {
+        const chokidar = require('chokidar');
+        chokidar.watch(LOG_FILE, { persistent: true }).on('change', () => {
+            activeConnections.clear();
+            fs.readFileSync(LOG_FILE, 'utf8').split('\n').forEach(line => {
+                const m = line.match(/(\d{1,3}(?:\.\d{1,3}){3}):\d+/);
+                if (m) activeConnections.add(m[1]);
+            });
+        });
+    } catch(e) { console.warn('chokidar:', e.message); }
+}
+
+app.get('/connections', (req, res) => {
+    res.json({ count: activeConnections.size, ips: Array.from(activeConnections) });
+});
+
+// ─── TAILSCALE DEVICES (raw) ─────────────────────────────────────────────────
+app.get('/ts/devices', async (req, res) => {
+    try {
+        const { status, body } = await tsRequest('GET', `/tailnet/${TS_TAILNET}/devices`);
+        res.status(status).json(body);
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── NODE REGISTRY ───────────────────────────────────────────────────────────
+// GET all nodes
+app.get('/nodes', (req, res) => {
+    // Enrich with live TS data
+    const enriched = Object.entries(nodeRegistry).map(([id, node]) => {
+        const tsDev = tsDevices.find(d => d.id === node.tailscaleId || d.addresses?.includes(node.tailscaleIp));
+        return {
+            ...node,
+            id,
+            online:   tsDev ? isOnline(tsDev.lastSeen) : node.online || false,
+            lastSeen: tsDev?.lastSeen || node.lastSeen || null,
+        };
+    });
+    res.json({ nodes: enriched });
+});
+
+// POST — add/update a node manually
+app.post('/nodes', (req, res) => {
+    const { name, region, tailscaleIp, tailscaleId, enabled } = req.body;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const id = tailscaleId || `node_${Date.now()}`;
+    nodeRegistry[id] = {
+        id, name, region: region || 'Unknown',
+        tailscaleIp: tailscaleIp || null,
+        tailscaleId: tailscaleId || null,
+        enabled: enabled !== false,
+        online: false, lastSeen: null,
+        addedAt: new Date().toISOString(),
+        connections: 0,
+    };
+    saveJson(NODES_FILE, nodeRegistry);
+    res.json({ ok: true, node: nodeRegistry[id] });
+});
+
+// PATCH — enable/disable a node
+app.patch('/nodes/:id', (req, res) => {
+    const node = nodeRegistry[req.params.id];
+    if (!node) return res.status(404).json({ error: 'Not found' });
+    if (req.body.enabled !== undefined) node.enabled = req.body.enabled;
+    if (req.body.name)    node.name    = req.body.name;
+    if (req.body.region)  node.region  = req.body.region;
+    saveJson(NODES_FILE, nodeRegistry);
+    res.json({ ok: true, node });
+});
+
+// DELETE a node
+app.delete('/nodes/:id', (req, res) => {
+    if (!nodeRegistry[req.params.id]) return res.status(404).json({ error: 'Not found' });
+    delete nodeRegistry[req.params.id];
+    saveJson(NODES_FILE, nodeRegistry);
+    res.json({ ok: true });
+});
+
+// Generate join instructions for a node
+app.get('/nodes/join-instructions', (req, res) => {
+    const authKey = req.query.authKey || 'tskey-auth-XXXXX'; // user provides their reusable auth key
+    const instructions = {
+        steps: [
+            {
+                label: 'Install Tailscale',
+                cmd: `curl -fsSL https://tailscale.com/install.sh | sh`
+            },
+            {
+                label: 'Join your Tailnet',
+                cmd: `sudo tailscale up --authkey ${authKey} --hostname vpn-node-$(hostname)`
+            },
+            {
+                label: 'Install 3proxy',
+                cmd: `sudo apt-get update && sudo apt-get install -y 3proxy`
+            },
+            {
+                label: 'Configure 3proxy to listen on Tailscale IP only',
+                cmd: `TS_IP=$(tailscale ip -4)\ncat > /etc/3proxy/3proxy.cfg << EOF\nnserver 1.1.1.1\nnserver 8.8.8.8\nlog /var/log/3proxy.log D\nlogformat "- +_L%t.%.  %N.%p %E %U %C:%c %R:%r %O %I %h %T"\ninclude /etc/3proxy/whitelist.cfg\nproxy -p3128 -i$TS_IP -e$TS_IP\nEOF`
+            },
+            {
+                label: 'Create empty whitelist',
+                cmd: `sudo touch /etc/3proxy/whitelist.cfg\nsudo systemctl restart 3proxy\nsudo systemctl enable 3proxy`
+            },
+            {
+                label: 'Verify node is visible',
+                cmd: `tailscale status`
+            }
+        ],
+        note: 'Once the node shows Online in your dashboard, enable it as a VPN server and clients can route through it.'
+    };
+    res.json(instructions);
+});
+
+// ─── CLIENT REGISTRY ─────────────────────────────────────────────────────────
+app.get('/clients', (req, res) => {
+    const enriched = Object.entries(clientRegistry).map(([id, client]) => {
+        const tsDev = tsDevices.find(d => d.id === client.tailscaleId);
+        return {
+            ...client,
+            id,
+            online:   tsDev ? isOnline(tsDev.lastSeen) : client.online || false,
+            lastSeen: tsDev?.lastSeen || client.lastSeen || null,
+        };
+    });
+    res.json({ clients: enriched });
+});
+
+app.post('/clients', (req, res) => {
+    const { name, tailscaleId, tailscaleIp, defaultNode } = req.body;
+    if (!name) return res.status(400).json({ error: 'name required' });
+    const id = tailscaleId || `client_${Date.now()}`;
+    clientRegistry[id] = {
+        id, name,
+        tailscaleId: tailscaleId || null,
+        tailscaleIp: tailscaleIp || null,
+        defaultNode: defaultNode || null, // node id
+        online: false, lastSeen: null,
+        addedAt: new Date().toISOString(),
+        bytesIn: 0, bytesOut: 0, totalConnections: 0,
+    };
+    saveJson(CLIENTS_FILE, clientRegistry);
+    res.json({ ok: true, client: clientRegistry[id] });
+});
+
+app.patch('/clients/:id', (req, res) => {
+    const client = clientRegistry[req.params.id];
+    if (!client) return res.status(404).json({ error: 'Not found' });
+    if (req.body.defaultNode !== undefined) client.defaultNode = req.body.defaultNode;
+    if (req.body.name)        client.name        = req.body.name;
+    if (req.body.whitelisted !== undefined) client.whitelisted = req.body.whitelisted;
+    saveJson(CLIENTS_FILE, clientRegistry);
+    res.json({ ok: true, client });
+});
+
+app.delete('/clients/:id', (req, res) => {
+    if (!clientRegistry[req.params.id]) return res.status(404).json({ error: 'Not found' });
+    delete clientRegistry[req.params.id];
+    saveJson(CLIENTS_FILE, clientRegistry);
+    res.json({ ok: true });
+});
+
+// Kick a client — remove from Tailnet via Tailscale API
+app.post('/clients/:id/kick', async (req, res) => {
+    const client = clientRegistry[req.params.id];
+    if (!client) return res.status(404).json({ error: 'Not found' });
+    if (!client.tailscaleId) return res.status(400).json({ error: 'No Tailscale ID for this client' });
+    try {
+        const { status } = await tsRequest('DELETE', `/device/${client.tailscaleId}`);
+        if (status === 200 || status === 204) {
+            client.online = false;
+            saveJson(CLIENTS_FILE, clientRegistry);
+            res.json({ ok: true, message: `${client.name} kicked from Tailnet` });
+        } else {
+            res.status(status).json({ error: 'Tailscale API error' });
+        }
+    } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─── LIVE STATS ──────────────────────────────────────────────────────────────
+// Returns per-node connection counts + global history for charts
+app.get('/stats', (req, res) => {
+    const nodes = Object.entries(nodeRegistry).map(([id, n]) => ({
+        id, name: n.name, region: n.region,
+        connections: n.connections || 0,
+        enabled: n.enabled, online: n.online,
+    }));
+    res.json({
+        totalConnections: activeConnections.size,
+        nodes,
+        clients: Object.values(clientRegistry).filter(c => c.online).length,
+        timestamp: Date.now(),
+    });
+});
+
+// ─── EXTENSION API ───────────────────────────────────────────────────────────
+// The browser extension hits these — no auth required (they check whitelist)
+
+// Returns list of enabled+online nodes for the extension server picker
+app.get('/ext/nodes', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const nodes = Object.values(nodeRegistry)
+        .filter(n => n.enabled && n.online)
+        .map(n => ({ id: n.id, name: n.name, region: n.region, tailscaleIp: n.tailscaleIp }));
+    res.json({ nodes });
+});
+
+// Extension checks if caller IP is whitelisted
+app.get('/ext/check', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || '';
+    const lines  = readWL();
+    const allowed = lines.some(l => l.includes(ip));
+    res.json({ allowed, ip });
+});
+//
+app.options('/ext/*', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.sendStatus(200);
+});
+
+// ─── START ───────────────────────────────────────────────────────────────────
+app.listen(PORT, () => {
+    console.log(`3Proxy dashboard → http://localhost:${PORT}`);
+    console.log(`Tailscale tailnet: ${TS_TAILNET}`);
+    console.log(`Tailscale API key: ${TS_API_KEY === 'tskey-api-kw8xy5TMZ611CNTRL-zu21D9HeRSchovFsCS1MRcN2nzgujDB2' ? 'NOT SET' : 'configured'}`);
+});

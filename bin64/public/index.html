@@ -1,0 +1,2453 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>3Proxy · Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ─── LIGHT ─────────────────────────────────────── */
+:root, [data-theme="light"] {
+  --bg: #f2f0f8;
+  --surface: rgba(255,255,255,0.70);
+  --surface-solid: #ffffff;
+  --surface-elevated: rgba(255,255,255,0.92);
+  --border: rgba(120,80,220,0.10);
+  --border-strong: rgba(120,80,220,0.18);
+  --text-primary: #1a1625;
+  --text-secondary: #6b6882;
+  --text-muted: #a09cb8;
+  --accent: #7c5ce8;
+  --accent2: #c084fc;
+  --accent-light: rgba(124,92,232,0.10);
+  --accent-glow: rgba(124,92,232,0.25);
+  --success: #10b981;
+  --success-light: rgba(16,185,129,0.10);
+  --danger: #ef4444;
+  --danger-light: rgba(239,68,68,0.09);
+  --warning: #f59e0b;
+  --warning-light: rgba(245,158,11,0.10);
+  --pink: #ec4899;
+  --pink-light: rgba(236,72,153,0.10);
+  --shadow-sm: 0 1px 4px rgba(100,60,200,0.06);
+  --shadow: 0 4px 24px rgba(100,60,200,0.09);
+  --shadow-lg: 0 20px 60px rgba(100,60,200,0.13);
+  --shadow-glow: 0 0 0 1px rgba(124,92,232,0.15), 0 8px 32px rgba(124,92,232,0.18);
+  --mesh-a: rgba(167,139,250,0.22);
+  --mesh-b: rgba(192,132,252,0.16);
+  --mesh-c: rgba(216,180,254,0.12);
+  --login-panel: #faf8ff;
+  --input-bg: rgba(255,255,255,0.88);
+  --thead: rgba(124,92,232,0.05);
+  --row-hover: rgba(124,92,232,0.04);
+  --conn-bg: rgba(16,185,129,0.05);
+  --conn-border: rgba(16,185,129,0.14);
+  --drag-over: rgba(124,92,232,0.10);
+  --code-bg: rgba(124,92,232,0.08);
+}
+
+/* ─── DARK ──────────────────────────────────────── */
+[data-theme="dark"] {
+  --bg: #0d0b14;
+  --surface: rgba(22,18,36,0.85);
+  --surface-solid: #16112a;
+  --surface-elevated: rgba(30,24,50,0.95);
+  --border: rgba(167,139,250,0.10);
+  --border-strong: rgba(167,139,250,0.20);
+  --text-primary: #ede9ff;
+  --text-secondary: #8c87ab;
+  --text-muted: #514d6a;
+  --accent: #a78bfa;
+  --accent2: #e879f9;
+  --accent-light: rgba(167,139,250,0.13);
+  --accent-glow: rgba(167,139,250,0.28);
+  --success: #34d399;
+  --success-light: rgba(52,211,153,0.10);
+  --danger: #f87171;
+  --danger-light: rgba(248,113,113,0.12);
+  --warning: #fbbf24;
+  --warning-light: rgba(251,191,36,0.10);
+  --pink: #f472b6;
+  --pink-light: rgba(244,114,182,0.12);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.35);
+  --shadow: 0 4px 24px rgba(0,0,0,0.45);
+  --shadow-lg: 0 20px 60px rgba(0,0,0,0.55);
+  --shadow-glow: 0 0 0 1px rgba(167,139,250,0.18), 0 8px 32px rgba(167,139,250,0.20);
+  --mesh-a: rgba(124,58,237,0.14);
+  --mesh-b: rgba(168,85,247,0.10);
+  --mesh-c: rgba(88,28,135,0.10);
+  --login-panel: #110e1f;
+  --input-bg: rgba(255,255,255,0.05);
+  --thead: rgba(167,139,250,0.07);
+  --row-hover: rgba(167,139,250,0.06);
+  --conn-bg: rgba(52,211,153,0.06);
+  --conn-border: rgba(52,211,153,0.15);
+  --drag-over: rgba(167,139,250,0.12);
+  --code-bg: rgba(167,139,250,0.10);
+}
+
+/* ─── BASE ──────────────────────────────────────── */
+body {
+  background: var(--bg);
+  font-family: 'DM Sans', -apple-system, sans-serif;
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+  transition: background .35s, color .35s;
+  -webkit-font-smoothing: antialiased;
+}
+
+body::before {
+  content: '';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(ellipse 65% 55% at 12% 18%, var(--mesh-a) 0%, transparent 58%),
+    radial-gradient(ellipse 55% 65% at 82% 75%, var(--mesh-b) 0%, transparent 52%),
+    radial-gradient(ellipse 40% 40% at 50% 48%, var(--mesh-c) 0%, transparent 68%);
+  transition: background .35s;
+}
+
+/* ─── LOGIN ──────────────────────────────────────── */
+#loginPage { min-height: 100vh; display: flex; position: relative; z-index: 1; }
+
+.ll {
+  flex: 1;
+  background: linear-gradient(150deg, #4c1d95 0%, #6d28d9 40%, #7c3aed 70%, #a855f7 100%);
+  display: flex; flex-direction: column; justify-content: space-between;
+  padding: 52px; position: relative; overflow: hidden;
+}
+.ll::before {
+  content: ''; position: absolute; inset: 0;
+  background: radial-gradient(ellipse 500px 400px at 85% 15%, rgba(255,255,255,0.07) 0%, transparent 55%),
+              radial-gradient(ellipse 350px 350px at 8% 85%, rgba(255,255,255,0.05) 0%, transparent 50%);
+}
+.ll::after {
+  content: ''; position: absolute; inset: 0;
+  background-image: linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+                    linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.ll-brand { position: relative; z-index: 1; display: flex; align-items: center; gap: 11px; }
+.ll-logo {
+  width: 38px; height: 38px; border-radius: 11px;
+  background: rgba(255,255,255,0.18); backdrop-filter: blur(10px);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.ll-logo svg { width: 19px; height: 19px; color: white; }
+.ll-name { font-size: 19px; font-weight: 700; color: white; letter-spacing: -.3px; }
+.ll-body { position: relative; z-index: 1; }
+.ll-body h2 {
+  font-size: 40px; font-weight: 800; color: white;
+  line-height: 1.12; letter-spacing: -1px; margin-bottom: 18px;
+}
+.ll-body p { font-size: 15px; color: rgba(255,255,255,0.6); line-height: 1.65; max-width: 300px; }
+.ll-foot { position: relative; z-index: 1; font-size: 12px; color: rgba(255,255,255,0.35); }
+
+.lr {
+  width: 440px; flex-shrink: 0;
+  background: var(--login-panel);
+  display: flex; align-items: center; justify-content: center;
+  padding: 52px 44px;
+  transition: background .35s;
+}
+.lf { width: 100%; max-width: 330px; animation: lReveal .55s cubic-bezier(.34,1.3,.64,1) both; }
+@keyframes lReveal { from{opacity:0;transform:translateY(18px)} to{opacity:1;transform:translateY(0)} }
+.lf h1 { font-size: 27px; font-weight: 800; letter-spacing: -.5px; margin-bottom: 6px; }
+.lf > p { font-size: 14px; color: var(--text-secondary); margin-bottom: 34px; }
+.flabel { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-secondary); margin-bottom: 7px; letter-spacing: .1px; }
+
+@media(max-width:700px){ .ll{display:none} .lr{width:100%} }
+
+/* ─── INPUTS ─────────────────────────────────────── */
+.iwrap { position: relative; margin-bottom: 15px; }
+.iwrap svg { position: absolute; left: 13px; top: 50%; transform: translateY(-50%); width: 15px; height: 15px; color: var(--text-muted); pointer-events: none; }
+input[type=password], input[type=text], textarea {
+  width: 100%; padding: 11px 13px 11px 38px;
+  border: 1.5px solid var(--border); border-radius: 9px;
+  background: var(--input-bg);
+  font-family: 'DM Sans', sans-serif; font-size: 14.5px;
+  color: var(--text-primary); outline: none;
+  transition: border-color .2s, box-shadow .2s, background .35s;
+}
+input:focus, textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+input::placeholder, textarea::placeholder { color: var(--text-muted); }
+textarea { padding-left: 13px; resize: vertical; min-height: 120px; font-size: 13px; font-family: 'JetBrains Mono', monospace; line-height: 1.6; }
+
+/* ─── BUTTONS ────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  font-family: 'DM Sans', sans-serif; font-size: 13.5px; font-weight: 600;
+  border: none; cursor: pointer; border-radius: 9px; padding: 9px 16px;
+  transition: transform .16s cubic-bezier(.34,1.4,.64,1), box-shadow .16s, background .16s, opacity .16s;
+  white-space: nowrap; user-select: none;
+}
+.btn:active { transform: scale(.97) !important; }
+
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  color: white; box-shadow: 0 4px 16px var(--accent-glow);
+  width: 100%; padding: 13px; font-size: 15px; border-radius: 10px;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--accent-glow); }
+
+.btn-accent { background: var(--accent-light); color: var(--accent); border: 1px solid rgba(124,92,232,0.18); }
+.btn-accent:hover { background: rgba(124,92,232,0.18); transform: translateY(-1px); }
+
+.btn-ghost { background: transparent; color: var(--text-secondary); border: 1px solid var(--border); }
+.btn-ghost:hover { background: var(--accent-light); color: var(--accent); border-color: rgba(124,92,232,0.2); }
+
+.btn-danger { background: var(--danger-light); color: var(--danger); border: 1px solid rgba(239,68,68,0.14); font-size: 12px; padding: 5px 11px; }
+.btn-danger:hover { background: rgba(239,68,68,0.18); }
+
+.btn-warning { background: var(--warning-light); color: var(--warning); border: 1px solid rgba(245,158,11,0.18); }
+.btn-warning:hover { background: rgba(245,158,11,0.2); transform: translateY(-1px); }
+
+.btn-success { background: var(--success-light); color: var(--success); border: 1px solid rgba(16,185,129,0.18); }
+.btn-success:hover { background: rgba(16,185,129,0.2); transform: translateY(-1px); }
+
+.btn-pink { background: var(--pink-light); color: var(--pink); border: 1px solid rgba(236,72,153,0.18); }
+.btn-pink:hover { background: rgba(236,72,153,0.2); transform: translateY(-1px); }
+
+.btn-sm { font-size: 12px; padding: 6px 12px; border-radius: 7px; }
+.btn-icon { width: 32px; height: 32px; padding: 0; border-radius: 8px; }
+
+/* ─── DASHBOARD ──────────────────────────────────── */
+#dashboard {
+  display: none; position: relative; z-index: 1;
+  padding: 24px 20px 48px; max-width: 960px; margin: 0 auto;
+  animation: dashIn .45s cubic-bezier(.4,0,.2,1) both;
+}
+@keyframes dashIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+/* ─── TOPBAR ─────────────────────────────────────── */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--surface); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 13px 18px; margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: background .35s, border-color .35s;
+}
+.tb-brand { display: flex; align-items: center; gap: 10px; }
+.tb-logo {
+  width: 33px; height: 33px; border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 3px 10px var(--accent-glow);
+}
+.tb-logo svg { width: 17px; height: 17px; color: white; }
+.tb-title { font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
+.tb-sub { font-size: 11.5px; color: var(--text-muted); }
+.tb-right { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+
+/* Status badge */
+.status-pill {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12.5px; font-weight: 600;
+  padding: 5px 11px; border-radius: 20px;
+  transition: all .3s;
+}
+.status-pill.online { color: var(--success); background: var(--success-light); border: 1px solid rgba(16,185,129,0.2); }
+.status-pill.offline { color: var(--danger); background: var(--danger-light); border: 1px solid rgba(239,68,68,0.2); }
+.status-pill.checking { color: var(--text-muted); background: var(--accent-light); border: 1px solid var(--border); }
+.sdot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.status-pill.online .sdot { background: var(--success); animation: sdot 2s infinite; }
+.status-pill.offline .sdot { background: var(--danger); }
+.status-pill.checking .sdot { background: var(--text-muted); }
+@keyframes sdot {
+  0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(16,185,129,.45)}
+  50%{opacity:.8;box-shadow:0 0 0 5px rgba(16,185,129,0)}
+}
+
+.theme-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: var(--accent-light); color: var(--accent);
+  border: 1px solid rgba(124,92,232,0.18);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all .2s; flex-shrink: 0;
+}
+.theme-btn:hover { background: rgba(124,92,232,0.2); transform: scale(1.08) rotate(15deg); }
+.theme-btn svg { width: 14px; height: 14px; }
+
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: white;
+  box-shadow: 0 2px 8px var(--accent-glow);
+}
+.av-row { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--text-secondary); font-weight: 600; }
+
+/* ─── GRID / CARDS ───────────────────────────────── */
+.g2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.g3 { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; margin-bottom: 14px; }
+@media(max-width:640px){ .g2,.g3{grid-template-columns:1fr} }
+
+.card {
+  background: var(--surface); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--border); border-radius: 16px;
+  padding: 20px; box-shadow: var(--shadow-sm);
+  position: relative; overflow: hidden;
+  transition: background .35s, border-color .35s, box-shadow .25s;
+}
+.card:hover { box-shadow: var(--shadow-glow); border-color: var(--border-strong); }
+.card-mb { margin-bottom: 14px; }
+
+.card-label { font-size: 11px; font-weight: 700; letter-spacing: .6px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+.card-val { font-size: 34px; font-weight: 800; letter-spacing: -1.5px; line-height: 1; font-variant-numeric: tabular-nums; }
+.card-sub { font-size: 12.5px; color: var(--text-secondary); margin-top: 5px; }
+
+.ci {
+  position: absolute; top: 16px; right: 16px;
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+}
+.ci svg { width: 17px; height: 17px; }
+.ci-pu { background: var(--accent-light); color: var(--accent); }
+.ci-gr { background: var(--success-light); color: var(--success); }
+.ci-pk { background: var(--pink-light); color: var(--pink); }
+
+/* ─── SECTION HEADERS ────────────────────────────── */
+.sh { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+.sh-title { font-size: 15px; font-weight: 700; letter-spacing: -.2px; }
+.sh-actions { display: flex; gap: 7px; align-items: center; flex-wrap: wrap; }
+
+/* ─── ADD IP ROW ─────────────────────────────────── */
+.add-row { display: flex; gap: 8px; margin-bottom: 14px; }
+.add-row .iwrap { flex: 1; margin: 0; }
+.add-row input { padding: 10px 13px 10px 36px; font-size: 13.5px; }
+
+/* ─── DIVIDER ────────────────────────────────────── */
+.div { height: 1px; background: var(--border); margin: 8px 0 14px; }
+
+/* ─── TABLE ──────────────────────────────────────── */
+.table-wrap { border-radius: 10px; overflow: hidden; border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: var(--thead); }
+th { padding: 9px 13px; font-size: 10.5px; font-weight: 700; letter-spacing: .55px; text-transform: uppercase; color: var(--text-muted); text-align: left; border-bottom: 1px solid var(--border); }
+tbody tr { transition: background .14s; border-bottom: 1px solid var(--border); }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--row-hover); }
+td { padding: 10px 13px; font-size: 13.5px; }
+.ipcell { font-family: 'JetBrains Mono', monospace; font-size: 12.5px; color: var(--accent); font-weight: 500; }
+.empty-row td { text-align: center; color: var(--text-muted); font-size: 13px; padding: 28px; }
+
+/* ─── CONNECTIONS ────────────────────────────────── */
+.conn-list { display: flex; flex-direction: column; gap: 5px; max-height: 200px; overflow-y: auto; }
+.conn-list::-webkit-scrollbar { width: 3px; }
+.conn-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.conn-item {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 11px;
+  background: var(--conn-bg); border: 1px solid var(--conn-border);
+  border-radius: 8px;
+  font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+  animation: itemIn .18s ease both;
+}
+@keyframes itemIn { from{opacity:0;transform:translateX(-5px)} to{opacity:1;transform:translateX(0)} }
+.cdot { width: 6px; height: 6px; background: var(--success); border-radius: 50%; flex-shrink: 0; }
+
+/* ─── PROXY CONTROLS CARD ────────────────────────── */
+.ctrl-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px,1fr)); gap: 10px; }
+.ctrl-btn {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 6px;
+  padding: 14px 14px 12px;
+  border-radius: 12px; border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  cursor: pointer; transition: all .2s cubic-bezier(.34,1.4,.64,1);
+  text-align: left; font-family: 'DM Sans', sans-serif;
+}
+.ctrl-btn:hover { transform: translateY(-3px); box-shadow: var(--shadow-glow); border-color: var(--border-strong); }
+.ctrl-btn:active { transform: scale(.97); }
+.ctrl-icon { width: 32px; height: 32px; border-radius: 9px; display: flex; align-items: center; justify-content: center; }
+.ctrl-icon svg { width: 15px; height: 15px; }
+.ctrl-label { font-size: 13px; font-weight: 700; color: var(--text-primary); line-height: 1.2; }
+.ctrl-desc { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+/* ─── ADVANCED CONFIG ────────────────────────────── */
+.advanced-toggle {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  cursor: pointer; user-select: none; padding: 10px 0;
+  transition: color .2s;
+}
+.advanced-toggle:hover { color: var(--accent); }
+.adv-chevron { transition: transform .25s cubic-bezier(.34,1.3,.64,1); flex-shrink: 0; }
+.adv-chevron.open { transform: rotate(180deg); }
+.advanced-panel { overflow: hidden; max-height: 0; transition: max-height .35s cubic-bezier(.4,0,.2,1), opacity .25s; opacity: 0; }
+.advanced-panel.open { max-height: 2000px; opacity: 1; }
+
+/* Config drag-drop */
+.cfg-area {
+  border: 1.5px dashed var(--border-strong); border-radius: 12px;
+  padding: 16px; margin-top: 12px;
+  transition: border-color .2s, background .2s;
+  min-height: 80px;
+}
+.cfg-area.drag-over { border-color: var(--accent); background: var(--drag-over); }
+.cfg-rows { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.cfg-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 9px 12px;
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: 9px; cursor: grab; user-select: none;
+  transition: all .15s; font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-secondary);
+}
+.cfg-row:active { cursor: grabbing; }
+.cfg-row.dragging { opacity: .5; box-shadow: var(--shadow); }
+.cfg-row.drop-target { border-color: var(--accent); background: var(--drag-over); }
+.drag-handle { color: var(--text-muted); display: flex; flex-direction: column; gap: 2px; flex-shrink: 0; cursor: grab; }
+.drag-handle span { display: block; width: 14px; height: 2px; background: currentColor; border-radius: 2px; }
+.cfg-row-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cfg-add-row { display: flex; gap: 8px; margin-top: 8px; }
+.cfg-add-row input { padding: 8px 12px 8px 12px; font-family: 'JetBrains Mono', monospace; font-size: 12.5px; }
+.cfg-add-row .iwrap { flex: 1; margin: 0; }
+.cfg-add-row .iwrap svg { display: none; }
+.cfg-add-row input { padding-left: 12px; }
+.cfg-save-row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
+
+/* Config raw edit mode toggle */
+.cfg-mode-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+.cfg-tab { padding: 6px 14px; border-radius: 7px; font-size: 12px; font-weight: 600; cursor: pointer; border: 1px solid var(--border); background: transparent; color: var(--text-muted); transition: all .15s; }
+.cfg-tab.active { background: var(--accent-light); color: var(--accent); border-color: rgba(124,92,232,.2); }
+
+/* ─── MODALS ─────────────────────────────────────── */
+.modal-back {
+  position: fixed; inset: 0;
+  background: rgba(10,6,20,.55); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  z-index: 600; display: flex; align-items: center; justify-content: center;
+  padding: 20px; opacity: 0; pointer-events: none; transition: opacity .22s;
+}
+.modal-back.open { opacity: 1; pointer-events: auto; }
+
+.modal {
+  background: var(--surface-solid); border: 1px solid var(--border);
+  border-radius: 20px; padding: 30px 28px;
+  width: 100%; max-width: 500px;
+  box-shadow: var(--shadow-lg);
+  transform: translateY(18px) scale(.97);
+  transition: transform .28s cubic-bezier(.34,1.35,.64,1);
+  max-height: 88vh; overflow-y: auto;
+}
+.modal-back.open .modal { transform: translateY(0) scale(1); }
+
+.modal-hdr { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 20px; gap: 12px; }
+.modal-title { font-size: 19px; font-weight: 800; letter-spacing: -.4px; }
+.modal-x {
+  width: 28px; height: 28px; border-radius: 8px; flex-shrink: 0;
+  background: var(--accent-light); color: var(--accent); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; transition: all .15s;
+}
+.modal-x:hover { background: rgba(124,92,232,.22); }
+.modal-x svg { width: 13px; height: 13px; }
+
+/* Warning modal — pink/purple glow */
+.modal-warn-glow {
+  box-shadow: var(--shadow-lg), 0 0 0 1px rgba(236,72,153,.25), 0 0 60px rgba(167,139,250,.15), 0 0 120px rgba(236,72,153,.08);
+  border-color: rgba(236,72,153,.22);
+}
+.warn-icon-wrap {
+  width: 56px; height: 56px; border-radius: 16px; margin: 0 auto 18px;
+  background: linear-gradient(135deg, var(--pink-light), var(--accent-light));
+  border: 1px solid rgba(236,72,153,.25);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 20px rgba(236,72,153,.2), 0 0 40px rgba(167,139,250,.15);
+}
+.warn-icon-wrap svg { width: 28px; height: 28px; color: var(--pink); }
+.warn-title { font-size: 20px; font-weight: 800; text-align: center; letter-spacing: -.4px; margin-bottom: 10px; }
+.warn-body { font-size: 14px; color: var(--text-secondary); text-align: center; line-height: 1.65; margin-bottom: 24px; }
+.warn-body strong { color: var(--pink); }
+.warn-actions { display: flex; gap: 10px; }
+.warn-actions .btn { flex: 1; padding: 11px; font-size: 14px; }
+.btn-warn-confirm {
+  background: linear-gradient(135deg, var(--pink), #a855f7);
+  color: white; border: none;
+  box-shadow: 0 4px 16px rgba(236,72,153,.35);
+}
+.btn-warn-confirm:hover { transform: translateY(-2px); box-shadow: 0 6px 22px rgba(236,72,153,.45); }
+
+/* Instructions modal */
+.instr-sec { margin-bottom: 20px; }
+.instr-sec:last-child { margin-bottom: 0; }
+.instr-head { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 800; letter-spacing: .5px; text-transform: uppercase; color: var(--accent); margin-bottom: 9px; }
+.instr-dot { width: 5px; height: 5px; background: var(--accent); border-radius: 50%; }
+.instr-item { display: flex; gap: 11px; padding: 11px 13px; background: var(--accent-light); border: 1px solid rgba(124,92,232,.10); border-radius: 10px; margin-bottom: 7px; }
+.instr-item:last-child { margin-bottom: 0; }
+.instr-ico { width: 30px; height: 30px; border-radius: 8px; background: var(--accent); color: white; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.instr-ico svg { width: 14px; height: 14px; }
+.instr-lbl { font-size: 13px; font-weight: 700; margin-bottom: 3px; }
+.instr-dsc { font-size: 12.5px; color: var(--text-secondary); line-height: 1.55; }
+.icode { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--accent); background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+.idiv { height: 1px; background: var(--border); margin: 16px 0; }
+
+/* ─── TOAST ──────────────────────────────────────── */
+#toasts {
+  position: fixed; top: 18px; right: 18px; z-index: 9999;
+  display: flex; flex-direction: column; gap: 7px; pointer-events: none;
+}
+.toast {
+  display: flex; align-items: center; gap: 9px;
+  padding: 11px 16px;
+  background: var(--surface-solid); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: var(--shadow);
+  font-size: 13.5px; font-weight: 600;
+  animation: tIn .3s cubic-bezier(.34,1.3,.64,1) both;
+  max-width: 310px; pointer-events: auto; cursor: pointer;
+}
+.toast.out { animation: tOut .22s ease forwards; }
+@keyframes tIn  { from{opacity:0;transform:translateX(20px) scale(.96)} to{opacity:1;transform:translateX(0) scale(1)} }
+@keyframes tOut { to{opacity:0;transform:translateX(12px) scale(.96)} }
+.ticon { width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.toast-success .ticon { background: rgba(16,185,129,.15); color: var(--success); }
+.toast-error   .ticon { background: var(--danger-light);   color: var(--danger); }
+.toast-info    .ticon { background: var(--accent-light);   color: var(--accent); }
+.toast-warn    .ticon { background: var(--warning-light);  color: var(--warning); }
+
+/* Allowed badge */
+.allowed-badge { font-size: 11.5px; color: var(--success); background: var(--success-light); padding: 3px 10px; border-radius: 20px; font-weight: 600; }
+
+/* ─── NODE / CLIENT CARDS ───────────────────────────────── */
+.node-card, .client-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px;
+  background: var(--surface-elevated); border: 1px solid var(--border);
+  border-radius: 12px; transition: all .2s cubic-bezier(.34,1.4,.64,1);
+}
+.node-card:hover, .client-card:hover { border-color: var(--border-strong); box-shadow: var(--shadow-glow); }
+.node-card.disabled { opacity: .55; }
+
+.node-status { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.node-status.online  { background: var(--success); box-shadow: 0 0 0 3px rgba(16,185,129,.2); animation: sdot 2s infinite; }
+.node-status.offline { background: var(--text-muted); }
+.node-status.disabled-dot { background: var(--warning); }
+
+.node-info { flex: 1; min-width: 0; }
+.node-name { font-size: 13.5px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.node-meta { font-size: 11.5px; color: var(--text-muted); font-family: "JetBrains Mono", monospace; margin-top: 2px; }
+.node-region { font-size: 11.5px; color: var(--text-secondary); margin-top: 1px; }
+
+.node-actions { display: flex; gap: 6px; flex-shrink: 0; align-items: center; }
+
+.toggle-pill {
+  width: 36px; height: 20px; border-radius: 10px;
+  background: var(--border-strong); position: relative; cursor: pointer;
+  transition: background .2s; flex-shrink: 0; border: none; padding: 0;
+}
+.toggle-pill.on { background: var(--accent); }
+.toggle-pill::after {
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 16px; height: 16px; border-radius: 50%; background: white;
+  transition: transform .2s cubic-bezier(.34,1.4,.64,1);
+  box-shadow: 0 1px 4px rgba(0,0,0,.2);
+}
+.toggle-pill.on::after { transform: translateX(16px); }
+
+/* Stats bar */
+.stat-bar-item {
+  flex: 1; min-width: 20px; border-radius: 4px 4px 0 0;
+  background: linear-gradient(to top, var(--accent), var(--accent2));
+  opacity: .7; transition: height .4s cubic-bezier(.34,1.4,.64,1), opacity .2s;
+  cursor: pointer; position: relative;
+}
+.stat-bar-item:hover { opacity: 1; }
+.stat-bar-item::after {
+  content: attr(data-label);
+  position: absolute; bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%);
+  font-size: 10px; color: var(--text-muted); white-space: nowrap;
+}
+
+/* Join instructions code blocks */
+.instr-cmd {
+  background: var(--surface-solid); border: 1px solid var(--border);
+  border-radius: 10px; padding: 12px 14px; margin-bottom: 0;
+  position: relative;
+}
+.instr-cmd-label { font-size: 11.5px; font-weight: 700; color: var(--accent); margin-bottom: 6px; }
+.instr-cmd-code {
+  font-family: "JetBrains Mono", monospace; font-size: 12px; color: var(--text-primary);
+  white-space: pre-wrap; word-break: break-all; line-height: 1.6;
+}
+.instr-cmd-copy {
+  position: absolute; top: 10px; right: 10px;
+  background: var(--accent-light); color: var(--accent);
+  border: none; border-radius: 6px; padding: 4px 10px;
+  font-size: 11px; font-weight: 700; cursor: pointer;
+  transition: all .15s;
+}
+.instr-cmd-copy:hover { background: rgba(124,92,232,.22); }
+
+/* Client default node badge */
+.default-node-badge {
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px;
+  background: var(--accent-light); color: var(--accent);
+  border: 1px solid rgba(124,92,232,.2);
+}
+
+/* ─── IP AUTH TOGGLE ──────────────────────────────────────── */
+.auth-toggle-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 14px; background: var(--surface-elevated);
+  border: 1px solid var(--border); border-radius: 10px; margin-bottom: 12px;
+}
+.auth-toggle-label { font-size: 13px; font-weight: 600; }
+.auth-toggle-sub   { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
+
+/* ─── SPEED TEST ───────────────────────────────────────────── */
+.speed-widget { padding: 16px 0 4px; }
+.speed-bars { display: flex; gap: 16px; margin-bottom: 12px; flex-wrap: wrap; }
+.speed-metric { flex: 1; min-width: 100px; }
+.speed-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--text-muted); margin-bottom: 5px; }
+.speed-value { font-size: 26px; font-weight: 800; letter-spacing: -1px; font-variant-numeric: tabular-nums; color: var(--accent); }
+.speed-unit  { font-size: 11px; color: var(--text-muted); margin-left: 2px; font-weight: 500; }
+.speed-bar-track {
+  height: 5px; background: var(--border); border-radius: 3px; margin-top: 5px; overflow: hidden;
+}
+.speed-bar-fill {
+  height: 100%; border-radius: 3px; width: 0%;
+  background: linear-gradient(90deg, var(--accent), var(--accent2));
+  transition: width 0.4s cubic-bezier(.4,0,.2,1);
+}
+.speed-bar-fill.green { background: linear-gradient(90deg, var(--success), #6ee7b7); }
+.speed-bar-fill.warn  { background: linear-gradient(90deg, var(--warning), #fde68a); }
+.speed-btn-row { display: flex; gap: 8px; }
+.speed-status  { font-size: 12px; color: var(--text-muted); padding-top: 2px; }
+
+/* ─── HOTLOOP ──────────────────────────────────────────────── */
+.hotloop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+@media(max-width:500px){ .hotloop-grid { grid-template-columns: 1fr; } }
+.hl-select {
+  width: 100%; padding: 8px 10px;
+  border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--input-bg); color: var(--text-primary);
+  font-family: inherit; font-size: 13px; outline: none;
+  transition: border-color .2s;
+}
+.hl-select:focus { border-color: var(--accent); }
+.weight-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.weight-slider { flex: 1; accent-color: var(--accent); height: 4px; }
+.weight-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-muted); margin-top: 3px; }
+
+/* ─── LIVE CLIENT STATS ────────────────────────────────────── */
+.stat-row-online { background: rgba(16,185,129,0.04); }
+.bytes-cell { font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--text-secondary); }
+.rate-cell  { font-size: 11.5px; color: var(--accent); font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body>
+
+<!-- ════════════════ LOGIN ════════════════ -->
+<div id="loginPage">
+  <div class="ll">
+    <div class="ll-brand">
+      <div class="ll-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/>
+        </svg>
+      </div>
+      <span class="ll-name">3Proxy</span>
+    </div>
+    <div class="ll-body">
+      <h2>Proxy management,<br>made simple.</h2>
+      <p>Manage your IP whitelist, monitor live connections, and control your proxy server — all from one place.</p>
+    </div>
+    <div class="ll-foot">© 2025 3Proxy Dashboard</div>
+  </div>
+
+  <div class="lr">
+    <div class="lf">
+      <h1>Welcome back</h1>
+      <p>Sign in to access your dashboard</p>
+
+      <label class="flabel" for="uIn">Username</label>
+      <div class="iwrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <input type="text" id="uIn" placeholder="oofbomb" onkeydown="if(event.key==='Enter')login()">
+      </div>
+
+      <label class="flabel" for="pIn">Password</label>
+      <div class="iwrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <input type="password" id="pIn" placeholder="Enter your password" onkeydown="if(event.key==='Enter')login()">
+      </div>
+
+      <button class="btn btn-primary" onclick="login()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+        Sign In
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ DASHBOARD ════════════════ -->
+<div id="dashboard">
+
+  <!-- Topbar -->
+  <div class="topbar">
+    <div class="tb-brand">
+      <div class="tb-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/>
+        </svg>
+      </div>
+      <div><div class="tb-title">3Proxy</div><div class="tb-sub">Proxy Management</div></div>
+    </div>
+    <div class="tb-right">
+      <div id="statusPill" class="status-pill checking"><div class="sdot"></div><span id="statusTxt">Checking…</span></div>
+      <button class="theme-btn" onclick="toggleTheme()" title="Toggle dark mode">
+        <svg id="themeIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      </button>
+      <div class="av-row"><div class="avatar">A</div>admin</div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="g2">
+    <div class="card">
+      <div class="ci ci-gr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+      <div class="card-label">Active Connections</div>
+      <div class="card-val" id="connCount">0</div>
+      <div class="card-sub">Live traffic</div>
+    </div>
+    <div class="card">
+      <div class="ci ci-pu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <div class="card-label">Whitelisted IPs</div>
+      <div class="card-val" id="wlCount">0</div>
+      <div class="card-sub">Allowed addresses</div>
+    </div>
+  </div>
+
+  <!-- Proxy Controls -->
+  <div class="card card-mb">
+    <div class="sh"><div class="sh-title">Proxy & Server Controls</div></div>
+    <div class="ctrl-grid">
+
+      <button class="ctrl-btn" onclick="proxyAction('start')">
+        <div class="ctrl-icon" style="background:var(--success-light);color:var(--success)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        </div>
+        <div class="ctrl-label">Start Proxy</div>
+        <div class="ctrl-desc">Launch 3proxy.exe</div>
+      </button>
+
+      <button class="ctrl-btn" onclick="proxyAction('stop')">
+        <div class="ctrl-icon" style="background:var(--danger-light);color:var(--danger)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+        </div>
+        <div class="ctrl-label">Stop Proxy</div>
+        <div class="ctrl-desc">Kill 3proxy.exe</div>
+      </button>
+
+      <button class="ctrl-btn" onclick="proxyAction('restart')">
+        <div class="ctrl-icon" style="background:var(--warning-light);color:var(--warning)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+        </div>
+        <div class="ctrl-label">Soft Restart</div>
+        <div class="ctrl-desc">Restart 3proxy</div>
+      </button>
+
+      <button class="ctrl-btn" onclick="proxyAction('status')">
+        <div class="ctrl-icon" style="background:var(--accent-light);color:var(--accent)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        </div>
+        <div class="ctrl-label">Proxy Status</div>
+        <div class="ctrl-desc">Check if running</div>
+      </button>
+
+      <button class="ctrl-btn" onclick="proxyAction('restart-web')">
+        <div class="ctrl-icon" style="background:var(--pink-light);color:var(--pink)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </div>
+        <div class="ctrl-label">Restart Web Server</div>
+        <div class="ctrl-desc">Restart Node.js</div>
+      </button>
+
+      <button class="ctrl-btn" onclick="confirmStopWeb()">
+        <div class="ctrl-icon" style="background:linear-gradient(135deg,var(--pink-light),var(--accent-light));color:var(--pink)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 19.36"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+        </div>
+        <div class="ctrl-label">Stop Web Server</div>
+        <div class="ctrl-desc" style="color:var(--pink)">⚠ Kills dashboard</div>
+      </button>
+
+    </div>
+  </div>
+
+  <!-- Whitelist Manager -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div class="sh-title">IP Whitelist</div>
+      <div class="sh-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openModal('instrModal')">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Help
+        </button>
+      </div>
+    </div>
+
+    <!-- IP Auth Toggle -->
+    <div class="auth-toggle-row" id="authToggleRow">
+      <div>
+        <div class="auth-toggle-label">IP Whitelist Auth</div>
+        <div class="auth-toggle-sub" id="authToggleSub">Enabled — only whitelisted IPs can connect</div>
+      </div>
+      <button class="toggle-pill" id="authTogglePill" onclick="toggleIpAuth()"></button>
+    </div>
+
+    <div class="add-row">
+      <div class="iwrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/></svg>
+        <input type="text" id="ipIn" placeholder="e.g. 203.0.113.45" onkeydown="if(event.key==='Enter')addIP()">
+      </div>
+      <button class="btn btn-accent" onclick="addIP()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add IP
+      </button>
+    </div>
+
+    <div class="div"></div>
+
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>IP Address</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody id="wlTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Active Connections -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div class="sh-title">Connected IPs</div>
+      <div style="font-size:11.5px;color:var(--text-muted);font-weight:600;">Auto-refresh · 1s</div>
+    </div>
+    <div id="connList" class="conn-list"><div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No active connections</div></div>
+  </div>
+
+
+  <!-- ── TAILSCALE NODES ────────────────────────────────────── -->
+  <div class="card card-mb" id="nodesCard">
+    <div class="sh">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="ci ci-pu" style="position:static;width:30px;height:30px;border-radius:8px;flex-shrink:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg></div>
+        <div><div class="sh-title">VPN Nodes</div><div style="font-size:11.5px;color:var(--text-muted)">Tailscale exit servers</div></div>
+      </div>
+      <div class="sh-actions">
+        <button class="btn btn-ghost btn-sm" onclick="openModal('tsConfigModal')">⚙ TS API Key</button>
+        <button class="btn btn-accent btn-sm" onclick="openModal('addNodeModal')">+ Add Node</button>
+        <button class="btn btn-ghost btn-sm" onclick="openModal('joinInstrModal')">Join Instructions</button>
+      </div>
+    </div>
+    <div id="nodesList" style="display:flex;flex-direction:column;gap:8px">
+      <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px">Loading nodes…</div>
+    </div>
+  </div>
+
+  <!-- ── CLIENTS ────────────────────────────────────────────── -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="ci ci-pk" style="position:static;width:30px;height:30px;border-radius:8px;flex-shrink:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <div><div class="sh-title">VPN Clients</div><div style="font-size:11.5px;color:var(--text-muted)">Manage connected users</div></div>
+      </div>
+      <div class="sh-actions">
+        <button class="btn btn-accent btn-sm" onclick="openModal('addClientModal')">+ Add Client</button>
+      </div>
+    </div>
+    <div id="clientsList" style="display:flex;flex-direction:column;gap:8px">
+      <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px">Loading clients…</div>
+    </div>
+  </div>
+
+  <!-- ── LIVE STATS ─────────────────────────────────────────── -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div class="sh-title">Live Network Stats</div>
+      <div style="font-size:11.5px;color:var(--text-muted);font-weight:600">Auto-refresh · 3s</div>
+    </div>
+    <div id="statsGrid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:14px"></div>
+    <div style="height:80px;display:flex;align-items:flex-end;gap:3px;padding:4px 0" id="statsBar"></div>
+  </div>
+
+
+  <!-- ── SPEED TEST ─────────────────────────────────────────────── -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div class="sh-title">Connection Speed Test</div>
+      <span id="speedStatus" class="speed-status">Select a target and run</span>
+    </div>
+
+    <!-- Server selector -->
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:160px">
+        <div class="flabel" style="margin-bottom:5px">Test target</div>
+        <select class="hl-select" id="speedTargetSel" onchange="onSpeedTargetChange()">
+          <option value="hub">Hub (direct — vpn2.oofbomb.xyz)</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:140px">
+        <div class="flabel" style="margin-bottom:5px">Test size</div>
+        <select class="hl-select" id="speedSizeSel">
+          <option value="524288">0.5 MB (quick)</option>
+          <option value="2097152" selected>2 MB (standard)</option>
+          <option value="5242880">5 MB (thorough)</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Connection check strip -->
+    <div id="connCheckStrip" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;"></div>
+
+    <!-- Metrics -->
+    <div class="speed-widget">
+      <div class="speed-bars">
+        <div class="speed-metric">
+          <div class="speed-label">Latency</div>
+          <div><span class="speed-value" id="speedPing">—</span><span class="speed-unit">ms</span></div>
+          <div class="speed-bar-track"><div class="speed-bar-fill" id="pingBar"></div></div>
+        </div>
+        <div class="speed-metric">
+          <div class="speed-label">Download</div>
+          <div><span class="speed-value" id="speedDown">—</span><span class="speed-unit">Mbps</span></div>
+          <div class="speed-bar-track"><div class="speed-bar-fill green" id="downBar"></div></div>
+        </div>
+        <div class="speed-metric">
+          <div class="speed-label">Upload</div>
+          <div><span class="speed-value" id="speedUp">—</span><span class="speed-unit">Mbps</span></div>
+          <div class="speed-bar-track"><div class="speed-bar-fill warn" id="upBar"></div></div>
+        </div>
+      </div>
+
+      <!-- Result history mini-table -->
+      <div id="speedHistory" style="margin:10px 0 10px;display:none">
+        <div class="flabel" style="margin-bottom:6px">Results</div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Node</th><th>Ping</th><th>↓ Down</th><th>↑ Up</th><th>Status</th></tr></thead>
+            <tbody id="speedHistoryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="speed-btn-row" style="gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-accent btn-sm" onclick="runSpeedTest()" id="speedBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+          Run Test
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="runAllNodeTests()" id="speedAllBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Test All Nodes
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="checkAllConnections()" id="connCheckBtn">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+          Check Connectivity
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── HOTLOOP / LOAD BALANCER ───────────────────────────────── -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div class="ci ci-pk" style="position:static;width:30px;height:30px;border-radius:8px;flex-shrink:0">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+        </div>
+        <div><div class="sh-title">DNS Hotloop</div><div style="font-size:11.5px;color:var(--text-muted)">Load balance between nodes</div></div>
+      </div>
+      <div class="sh-actions">
+        <span style="font-size:11.5px;color:var(--text-muted);font-weight:600;" id="hlEnabledLbl">Disabled</span>
+        <button class="toggle-pill" id="hlTogglePill" onclick="toggleHotloop()"></button>
+      </div>
+    </div>
+    <div id="hlControls">
+      <div class="hotloop-grid">
+        <div>
+          <div class="flabel">Primary Node (preferred)</div>
+          <select class="hl-select" id="hlPrimary" onchange="saveHotloop()"></select>
+        </div>
+        <div>
+          <div class="flabel">Fallback Node</div>
+          <select class="hl-select" id="hlFallback" onchange="saveHotloop()"></select>
+        </div>
+      </div>
+      <div>
+        <div class="flabel" style="margin-bottom:6px">Primary weight: <span id="hlWeightVal">90%</span></div>
+        <div class="weight-row">
+          <input type="range" class="weight-slider" id="hlWeightSlider" min="0" max="1000" value="900" oninput="updateWeightLabel(this.value)" onchange="saveHotloop()">
+        </div>
+        <div class="weight-labels"><span id="hlPrimaryLbl">Home</span><span>↔</span><span id="hlFallbackLbl">NYC</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="flabel">Mode</div>
+        <div style="display:flex;gap:6px;margin-top:6px">
+          <button class="cfg-tab active" id="modeWeighted" onclick="setHlMode('weighted')">Weighted</button>
+          <button class="cfg-tab" id="modeLatency" onclick="setHlMode('latency')">Lowest Latency</button>
+          <button class="cfg-tab" id="modeManual" onclick="setHlMode('manual')">Manual</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── LIVE CLIENT STATS ──────────────────────────────────────── -->
+  <div class="card card-mb">
+    <div class="sh">
+      <div class="sh-title">Live Connection Stats</div>
+      <div style="font-size:11.5px;color:var(--text-muted);font-weight:600">From 3proxy log · 3s</div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Client IP</th><th>↓ In</th><th>↑ Out</th><th>Rate ↓</th><th>Rate ↑</th><th>Duration</th>
+        </tr></thead>
+        <tbody id="liveStatsTable"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Advanced Config -->
+  <div class="card card-mb">
+    <div class="advanced-toggle" onclick="toggleAdvanced()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+      <span>Advanced — Config Editor</span>
+      <svg class="adv-chevron" id="advChevron" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+    </div>
+
+    <div class="advanced-panel" id="advPanel">
+      <div class="div"></div>
+      <div class="cfg-mode-toggle">
+        <button class="cfg-tab active" id="tabVisual" onclick="switchCfgTab('visual')">Visual Editor</button>
+        <button class="cfg-tab" id="tabRaw" onclick="switchCfgTab('raw')">Raw Edit</button>
+      </div>
+
+      <!-- Visual drag-drop editor -->
+      <div id="cfgVisual">
+        <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px;">Drag rows to reorder config lines. Click × to remove.</div>
+        <div class="cfg-area" id="cfgDropZone">
+          <div class="cfg-rows" id="cfgRows"></div>
+        </div>
+        <div class="cfg-add-row">
+          <div class="iwrap">
+            <input type="text" id="cfgNewLine" placeholder="Add a config line, e.g.  proxy -p3128">
+          </div>
+          <button class="btn btn-accent btn-sm" onclick="cfgAddLine()">Add Line</button>
+        </div>
+        <div class="cfg-save-row">
+          <button class="btn btn-ghost btn-sm" onclick="loadConfig()">↺ Reload from server</button>
+          <button class="btn btn-accent btn-sm" onclick="saveConfig()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save Config
+          </button>
+        </div>
+      </div>
+
+      <!-- Raw text editor -->
+      <div id="cfgRaw" style="display:none">
+        <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:10px;">Edit the raw config file directly. Be careful — bad config will prevent 3proxy from starting.</div>
+        <div class="iwrap" style="margin-bottom:10px">
+          <textarea id="cfgRawText" placeholder="Loading config…"></textarea>
+        </div>
+        <div class="cfg-save-row">
+          <button class="btn btn-ghost btn-sm" onclick="loadConfig()">↺ Reload from server</button>
+          <button class="btn btn-accent btn-sm" onclick="saveConfig()">Save Config</button>
+        </div>
+      </div>
+
+      <!-- ── Server.js Editor ── -->
+      <div class="div" style="margin-top:18px"></div>
+      <div class="advanced-toggle" style="padding:10px 0 6px" onclick="toggleServerEditor()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+        <span style="font-size:13px;font-weight:700;">server.js Editor</span>
+        <span style="font-size:11px;color:var(--danger);background:var(--danger-light);border:1px solid rgba(239,68,68,.18);padding:2px 8px;border-radius:20px;font-weight:700;margin-left:4px;">DANGEROUS</span>
+        <svg class="adv-chevron" id="srvChevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+
+      <div class="advanced-panel" id="srvPanel">
+        <div style="display:flex;align-items:center;gap:8px;padding:10px 13px;background:var(--danger-light);border:1px solid rgba(239,68,68,.18);border-radius:10px;margin-bottom:12px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span style="font-size:12.5px;color:var(--danger);font-weight:600;">Saving rewrites server.js and restarts the web server. Dashboard will briefly go offline.</span>
+        </div>
+        <div class="iwrap" style="margin-bottom:10px">
+          <textarea id="srvText" placeholder="Loading server.js…" style="min-height:340px;font-size:12px;line-height:1.65;"></textarea>
+        </div>
+        <div class="cfg-save-row">
+          <button class="btn btn-ghost btn-sm" onclick="loadServerJs()">&#8635; Reload from server</button>
+          <button class="btn btn-sm" style="background:linear-gradient(135deg,var(--danger),#f97316);color:white;box-shadow:0 3px 12px rgba(239,68,68,.3)" onclick="confirmSaveServerJs()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+            Save &amp; Restart Server
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
+
+<!-- ════════════════ TS API KEY MODAL ════════════════ -->
+<div id="tsConfigModal" class="modal-back" onclick="handleBackClick(event,'tsConfigModal')">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">Tailscale API Key</div>
+      <button class="modal-x" onclick="closeModal('tsConfigModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Your Tailscale API key is set in server.js as <span class="icode">TS_API_KEY</span> or via the <span class="icode">TS_API_KEY</span> environment variable. Get one from <a href="https://login.tailscale.com/admin/settings/keys" target="_blank" style="color:var(--accent)">tailscale.com/admin/settings/keys</a>.<br><br>Your tailnet name is set as <span class="icode">TS_TAILNET</span> — use <span class="icode">-</span> for your default tailnet.</div>
+    <div class="flabel">Tailnet name (or - for default)</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/></svg><input type="text" id="tsTailnetIn" placeholder="-"></div>
+    <div class="flabel">API Key (tskey-api-…)</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input type="password" id="tsApiKeyIn" placeholder="tskey-api-…"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:4px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('tsConfigModal')">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="saveTsConfig()">Save to server.js</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ ADD NODE MODAL ════════════════ -->
+<div id="addNodeModal" class="modal-back" onclick="handleBackClick(event,'addNodeModal')">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">Add VPN Node</div>
+      <button class="modal-x" onclick="closeModal('addNodeModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Add a Linux machine that's already joined your Tailnet. Use the Join Instructions button to get setup commands for new machines.</div>
+    <div class="flabel">Display name</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg><input type="text" id="nodeNameIn" placeholder="e.g. Chicago Node"></div>
+    <div class="flabel">Region / Location</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><input type="text" id="nodeRegionIn" placeholder="e.g. Chicago, IL"></div>
+    <div class="flabel">Tailscale IP (100.x.x.x) — optional, auto-detected</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg><input type="text" id="nodeTsIpIn" placeholder="100.x.x.x"></div>
+    <div class="flabel">Tailscale Device ID — optional, auto-detected</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input type="text" id="nodeTsIdIn" placeholder="Leave blank to auto-match by IP"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('addNodeModal')">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="addNode()">Add Node</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ JOIN INSTRUCTIONS MODAL ════════════════ -->
+<div id="joinInstrModal" class="modal-back" onclick="handleBackClick(event,'joinInstrModal')">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-hdr">
+      <div class="modal-title">Node Setup Instructions</div>
+      <button class="modal-x" onclick="closeModal('joinInstrModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div style="font-size:13px;color:var(--text-secondary);margin-bottom:12px">Run these commands on your Linux VPS to join it as a VPN node.</div>
+    <div class="flabel">Your Tailscale Auth Key (reusable)</div>
+    <div style="display:flex;gap:8px;margin-bottom:16px">
+      <div class="iwrap" style="flex:1;margin:0"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input type="text" id="joinAuthKey" placeholder="tskey-auth-…" oninput="renderJoinInstr()"></div>
+      <button class="btn btn-accent btn-sm" onclick="renderJoinInstr()">Generate</button>
+    </div>
+    <div id="joinSteps" style="display:flex;flex-direction:column;gap:8px"></div>
+  </div>
+</div>
+
+<!-- ════════════════ ADD CLIENT MODAL ════════════════ -->
+<div id="addClientModal" class="modal-back" onclick="handleBackClick(event,'addClientModal')">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">Add VPN Client</div>
+      <button class="modal-x" onclick="closeModal('addClientModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+    <div class="flabel">Display name</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><input type="text" id="clientNameIn" placeholder="e.g. John's MacBook"></div>
+    <div class="flabel">Tailscale Device ID — optional</div>
+    <div class="iwrap"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input type="text" id="clientTsIdIn" placeholder="Device ID from Tailscale admin"></div>
+    <div class="flabel">Default VPN Node</div>
+    <select id="clientDefaultNodeIn" style="width:100%;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--input-bg);color:var(--text-primary);font-family:inherit;font-size:14px;outline:none;margin-bottom:14px"></select>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('addClientModal')">Cancel</button>
+      <button class="btn btn-accent btn-sm" onclick="addClient()">Add Client</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ WARNING MODAL (Save server.js) ════════════════ -->
+<div id="saveServerModal" class="modal-back" onclick="handleBackClick(event,'saveServerModal')">
+  <div class="modal modal-warn-glow">
+    <div class="warn-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+    </div>
+    <div class="warn-title">Overwrite server.js?</div>
+    <div class="warn-body">
+      This will <strong>replace the running server.js</strong> on disk and immediately restart Node.js.<br><br>
+      The dashboard will go <strong>offline for a few seconds</strong> while it reboots. If your code has a syntax error, <strong>the server won't come back up</strong> until you fix it manually via <span style="font-family:monospace;font-size:13px;color:var(--pink)">start.bat</span>.
+    </div>
+    <div class="warn-actions">
+      <button class="btn btn-ghost" onclick="closeModal('saveServerModal')">Cancel</button>
+      <button class="btn btn-warn-confirm" onclick="doSaveServerJs()">Yes, save &amp; restart</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ WARNING MODAL (Stop Web Server) ════════════════ -->
+<div id="stopWebModal" class="modal-back" onclick="handleBackClick(event,'stopWebModal')">
+  <div class="modal modal-warn-glow">
+    <div class="warn-icon-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 19.36"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+    </div>
+    <div class="warn-title">Stop Web Server?</div>
+    <div class="warn-body">
+      This will kill the <strong>Node.js server</strong> — which means <strong>this dashboard will go offline immediately</strong>.<br><br>
+      You won't be able to access it until you run <strong>start.bat</strong> again on the server machine.
+    </div>
+    <div class="warn-actions">
+      <button class="btn btn-ghost" onclick="closeModal('stopWebModal')">Cancel</button>
+      <button class="btn btn-warn-confirm" onclick="doStopWeb()">Yes, shut it down</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════ INSTRUCTIONS MODAL ════════════════ -->
+<div id="instrModal" class="modal-back" onclick="handleBackClick(event,'instrModal')">
+  <div class="modal">
+    <div class="modal-hdr">
+      <div class="modal-title">How to use</div>
+      <button class="modal-x" onclick="closeModal('instrModal')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div class="instr-sec">
+      <div class="instr-head"><div class="instr-dot"></div>IP Whitelist</div>
+      <div class="instr-item">
+        <div class="instr-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div>
+        <div><div class="instr-lbl">Adding an IP</div><div class="instr-dsc">Type any public IPv4 like <span class="icode">203.0.113.45</span> and click <strong>Add IP</strong>. Only whitelisted IPs can connect through the proxy. The proxy auto-restarts after changes.</div></div>
+      </div>
+      <div class="instr-item">
+        <div class="instr-ico" style="background:var(--danger)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg></div>
+        <div><div class="instr-lbl">Removing an IP</div><div class="instr-dsc">Click <strong>Remove</strong> next to any IP. Access revokes immediately and the proxy restarts. If it's not working, check the fix below.</div></div>
+      </div>
+      <div class="instr-item">
+        <div class="instr-ico" style="background:#7c3aed"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+        <div><div class="instr-lbl">What IP to enter?</div><div class="instr-dsc">Enter the <strong>public IP of whoever needs access</strong>. Check <span class="icode">whatismyip.com</span>. Don't use LAN IPs like <span class="icode">192.168.x.x</span> — those won't work from the internet.</div></div>
+      </div>
+    </div>
+
+    <div class="idiv"></div>
+
+    <div class="instr-sec">
+      <div class="instr-head"><div class="instr-dot"></div>IP Remove Not Working?</div>
+      <div class="instr-item">
+        <div class="instr-ico" style="background:var(--warning)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div><div class="instr-lbl">Check whitelist.cfg format</div><div class="instr-dsc">The server looks for lines like <span class="icode">allow * 1.2.3.4</span> in <span class="icode">whitelist.cfg</span>. If your file has a different format (just raw IPs), the remove function won't match. Use the Config Editor in Advanced to check and fix.</div></div>
+      </div>
+    </div>
+
+    <div class="idiv"></div>
+
+    <div class="instr-sec">
+      <div class="instr-head"><div class="instr-dot"></div>Status & Controls</div>
+      <div class="instr-item">
+        <div class="instr-ico" style="background:var(--success)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <div><div class="instr-lbl">Online / Offline badge</div><div class="instr-dsc">Pings the server every second. <strong>Offline</strong> means Node.js crashed or 3proxy isn't running — run <span class="icode">start.bat</span>.</div></div>
+      </div>
+      <div class="instr-item">
+        <div class="instr-ico" style="background:var(--pink)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64A9 9 0 1 1 5.64 19.36"/><line x1="12" y1="2" x2="12" y2="12"/></svg></div>
+        <div><div class="instr-lbl">Stop Web Server warning</div><div class="instr-dsc">Stopping the web server kills Node.js — the dashboard goes dark instantly. You must physically run <span class="icode">start.bat</span> on the server machine to bring it back.</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+/* ══════════════════════════════════════════════
+   CONFIG
+══════════════════════════════════════════════ */
+const VALID_USER = 'oofbomb';
+const VALID_PASS = 'malaop0989';
+const SESSION_COOKIE = '3proxy_session';
+const SESSION_HOURS  = 24;
+
+let loggedIn = false;
+const AH = new Headers(); // auth headers
+
+/* ══════════════════════════════════════════════
+   COOKIE AUTH SESSION
+══════════════════════════════════════════════ */
+function setCookie(name, value, hours) {
+  const exp = new Date(Date.now() + hours * 3600000).toUTCString();
+  document.cookie = `${name}=${encodeURIComponent(value)}; expires=${exp}; path=/; SameSite=Strict`;
+}
+
+function getCookie(name) {
+  return document.cookie.split(';').map(c => c.trim())
+    .find(c => c.startsWith(name + '='))
+    ?.split('=').slice(1).join('=').replace(/%3A/g,':') || null;
+}
+
+function deleteCookie(name) {
+  document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/`;
+}
+
+function tryAutoLogin() {
+  const saved = getCookie(SESSION_COOKIE);
+  if (!saved) return false;
+  try {
+    const { u, p } = JSON.parse(decodeURIComponent(saved));
+    if (u === VALID_USER && p === VALID_PASS) {
+      doLogin(false);
+      return true;
+    }
+  } catch {}
+  deleteCookie(SESSION_COOKIE);
+  return false;
+}
+
+/* ══════════════════════════════════════════════
+   LOGIN
+══════════════════════════════════════════════ */
+function login() {
+  const u = document.getElementById('uIn').value.trim();
+  const p = document.getElementById('pIn').value;
+
+  if (u === VALID_USER && p === VALID_PASS) {
+    setCookie(SESSION_COOKIE, JSON.stringify({u, p}), SESSION_HOURS);
+    doLogin(true);
+  } else {
+    const bad = u !== VALID_USER ? document.getElementById('uIn') : document.getElementById('pIn');
+    bad.style.borderColor = 'var(--danger)';
+    bad.style.boxShadow = '0 0 0 3px rgba(239,68,68,0.18)';
+    setTimeout(() => { bad.style.borderColor = ''; bad.style.boxShadow = ''; }, 2000);
+    toast(u !== VALID_USER ? 'Unknown username' : 'Incorrect password', 'error');
+  }
+}
+
+function doLogin(showToast) {
+  loggedIn = true;
+  AH.set('Authorization', 'Basic ' + btoa(`${VALID_USER}:${VALID_PASS}`));
+  document.getElementById('loginPage').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
+  fetchWhitelist();
+  updateConnections();
+  fetchNodes();
+  fetchClients();
+  fetchStats();
+  loadAuthState();
+  loadHotloop();
+  fetchLiveStats();
+  setInterval(updateConnections, 1000);
+  setInterval(() => { fetchNodes(); fetchClients(); }, 10000);
+  setInterval(fetchStats, 3000);
+  setInterval(fetchLiveStats, 3000);
+  if (showToast) toast('Signed in successfully', 'success');
+}
+
+/* ══════════════════════════════════════════════
+   THEME
+══════════════════════════════════════════════ */
+const savedTheme = localStorage.getItem('3p_theme') || 'light';
+document.documentElement.setAttribute('data-theme', savedTheme);
+updateThemeIcon(savedTheme);
+
+function toggleTheme() {
+  const next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+  document.documentElement.setAttribute('data-theme', next);
+  localStorage.setItem('3p_theme', next);
+  updateThemeIcon(next);
+}
+
+function updateThemeIcon(t) {
+  const i = document.getElementById('themeIco'); if (!i) return;
+  i.innerHTML = t === 'dark'
+    ? `<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>`
+    : `<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>`;
+}
+
+/* ══════════════════════════════════════════════
+   STATUS
+══════════════════════════════════════════════ */
+function setStatus(online) {
+  const p = document.getElementById('statusPill');
+  const t = document.getElementById('statusTxt');
+  p.className = 'status-pill ' + (online ? 'online' : 'offline');
+  t.textContent = online ? 'Online' : 'Offline';
+}
+
+/* ══════════════════════════════════════════════
+   TOAST
+══════════════════════════════════════════════ */
+const TICONS = {
+  success:`<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  error:  `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`,
+  info:   `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+  warn:   `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`
+};
+
+function toast(msg, type='info') {
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.innerHTML = `<span class="ticon">${TICONS[type]||TICONS.info}</span><span>${msg}</span>`;
+  el.onclick = () => dismissToast(el);
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(() => dismissToast(el), 3500);
+}
+
+function dismissToast(el) {
+  if (el.classList.contains('out')) return;
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 230);
+}
+
+/* ══════════════════════════════════════════════
+   WHITELIST
+══════════════════════════════════════════════ */
+function fetchWhitelist() {
+  if (!loggedIn) return;
+  fetch('/whitelist', { headers: AH })
+    .then(r => r.json())
+    .then(data => {
+      const list = data.whitelist || [];
+      document.getElementById('wlCount').textContent = list.length;
+      const tb = document.getElementById('wlTable');
+
+      if (!list.length) {
+        tb.innerHTML = `<tr class="empty-row"><td colspan="3">No IPs whitelisted yet</td></tr>`;
+        return;
+      }
+
+      tb.innerHTML = '';
+      list.forEach(rawLine => {
+        // Extract just the IP for display; server stores "allow * x.x.x.x"
+        const ip = rawLine.replace(/^allow \* /, '').trim();
+        const tr = document.createElement('tr');
+        tr.dataset.ip = ip;
+        tr.innerHTML = `
+          <td class="ipcell">${ip}</td>
+          <td><span class="allowed-badge">Allowed</span></td>
+          <td><button class="btn btn-danger" onclick="removeIP('${ip}')">Remove</button></td>
+        `;
+        tb.appendChild(tr);
+      });
+    })
+    .catch(() => toast('Failed to load whitelist', 'error'));
+}
+
+function addIP() {
+  if (!loggedIn) return;
+  const el = document.getElementById('ipIn');
+  const ip = el.value.trim();
+  if (!ip) return toast('Enter an IP address', 'warn');
+  if (!/^(\d{1,3}\.){3}\d{1,3}$/.test(ip)) return toast('Invalid IP format', 'error');
+
+  // Optimistic UI: add row immediately
+  const tb = document.getElementById('wlTable');
+  const empty = tb.querySelector('.empty-row');
+  if (empty) empty.remove();
+  const tr = document.createElement('tr');
+  tr.dataset.ip = ip;
+  tr.innerHTML = `
+    <td class="ipcell">${ip}</td>
+    <td><span class="allowed-badge">Allowed</span></td>
+    <td><button class="btn btn-danger" onclick="removeIP('${ip}')">Remove</button></td>
+  `;
+  tb.appendChild(tr);
+  el.value = '';
+  document.getElementById('wlCount').textContent = tb.querySelectorAll('tr:not(.empty-row)').length;
+
+  fetch('/whitelist', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  }).then(r => {
+    if (!r.ok) throw new Error();
+    toast(`${ip} added`, 'success');
+    fetchWhitelist();
+  }).catch(() => {
+    toast('Failed to add IP', 'error');
+    fetchWhitelist(); // Re-sync
+  });
+}
+
+function removeIP(ip) {
+  if (!loggedIn) return;
+
+  // Optimistic UI: remove row immediately
+  const row = document.querySelector(`#wlTable tr[data-ip="${ip}"]`);
+  if (row) {
+    row.style.opacity = '.4';
+    row.style.pointerEvents = 'none';
+  }
+
+  fetch('/whitelist', {
+    method: 'DELETE',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip })
+  }).then(r => {
+    if (!r.ok) throw new Error();
+    toast(`${ip} removed`, 'warn');
+    fetchWhitelist();
+  }).catch(() => {
+    toast('Failed to remove IP — check whitelist.cfg format', 'error');
+    fetchWhitelist(); // Re-sync
+  });
+}
+
+/* ══════════════════════════════════════════════
+   PROXY / SERVER CONTROLS
+══════════════════════════════════════════════ */
+function proxyAction(action) {
+  if (!loggedIn) return;
+  const labels = {
+    'start': ['Starting proxy…', 'Proxy started', 'Failed to start proxy'],
+    'stop':  ['Stopping proxy…', 'Proxy stopped', 'Failed to stop proxy'],
+    'restart':['Restarting…', '3proxy restarted', 'Restart failed'],
+    'status':['Checking status…', null, 'Status check failed'],
+    'restart-web':['Restarting web server…', 'Web server restarting…', 'Failed to restart web server'],
+  };
+  const [pending, success, fail] = labels[action] || ['Working…','Done','Failed'];
+  toast(pending, 'info');
+
+  fetch(`/${action}`, { method: 'POST', headers: AH })
+    .then(async r => {
+      const text = await r.text().catch(() => '');
+      if (!r.ok) throw new Error(text || fail);
+      if (action === 'status') toast(`Status: ${text || 'Running'}`, 'info');
+      else if (success) toast(success, 'success');
+    })
+    .catch(e => toast(e.message || fail, 'error'));
+}
+
+function confirmStopWeb() { openModal('stopWebModal'); }
+
+function doStopWeb() {
+  closeModal('stopWebModal');
+  toast('Shutting down web server…', 'warn');
+  fetch('/stop-web', { method: 'POST', headers: AH }).catch(() => {});
+  // Dashboard will go offline — show message after brief delay
+  setTimeout(() => {
+    toast('Web server stopped. Dashboard is offline.', 'error');
+  }, 800);
+}
+
+/* ══════════════════════════════════════════════
+   CONNECTIONS + STATUS
+══════════════════════════════════════════════ */
+function updateConnections() {
+  if (!loggedIn) return;
+  fetch('/connections', { headers: AH })
+    .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+    .then(data => {
+      setStatus(true);
+      document.getElementById('connCount').textContent = data.count || 0;
+      const c = document.getElementById('connList');
+      const ips = data.ips || [];
+      if (!ips.length) { c.innerHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:20px">No active connections</div>`; return; }
+      c.innerHTML = '';
+      ips.forEach(ip => {
+        const d = document.createElement('div');
+        d.className = 'conn-item';
+        d.innerHTML = `<span class="cdot"></span>${ip}`;
+        c.appendChild(d);
+      });
+    })
+    .catch(() => setStatus(false));
+}
+
+/* ══════════════════════════════════════════════
+   MODALS
+══════════════════════════════════════════════ */
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+function handleBackClick(e, id) { if (e.target === document.getElementById(id)) closeModal(id); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') document.querySelectorAll('.modal-back.open').forEach(m => m.classList.remove('open')); });
+
+/* ══════════════════════════════════════════════
+   ADVANCED CONFIG
+══════════════════════════════════════════════ */
+let advOpen = false;
+let cfgLines = [];
+let dragSrcIdx = null;
+let cfgMode = 'visual';
+
+function toggleAdvanced() {
+  advOpen = !advOpen;
+  document.getElementById('advPanel').classList.toggle('open', advOpen);
+  document.getElementById('advChevron').classList.toggle('open', advOpen);
+  if (advOpen && !cfgLines.length) loadConfig();
+}
+
+function switchCfgTab(mode) {
+  cfgMode = mode;
+  document.getElementById('tabVisual').classList.toggle('active', mode === 'visual');
+  document.getElementById('tabRaw').classList.toggle('active', mode === 'raw');
+  document.getElementById('cfgVisual').style.display = mode === 'visual' ? '' : 'none';
+  document.getElementById('cfgRaw').style.display = mode === 'raw' ? '' : 'none';
+  if (mode === 'raw') syncRawFromLines();
+}
+
+function loadConfig() {
+  fetch('/config', { headers: AH })
+    .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+    .then(text => {
+      cfgLines = text.split('\n');
+      renderCfgRows();
+      document.getElementById('cfgRawText').value = text;
+      toast('Config loaded', 'success');
+    })
+    .catch(() => toast('Failed to load config', 'error'));
+}
+
+function saveConfig() {
+  if (cfgMode === 'raw') {
+    cfgLines = document.getElementById('cfgRawText').value.split('\n');
+  }
+  const body = cfgLines.join('\n');
+  fetch('/config', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'text/plain' },
+    body
+  }).then(r => {
+    if (!r.ok) throw new Error();
+    toast('Config saved — restart proxy to apply', 'success');
+  }).catch(() => toast('Failed to save config', 'error'));
+}
+
+function syncRawFromLines() {
+  document.getElementById('cfgRawText').value = cfgLines.join('\n');
+}
+
+function renderCfgRows() {
+  const container = document.getElementById('cfgRows');
+  container.innerHTML = '';
+  cfgLines.forEach((line, i) => {
+    const row = document.createElement('div');
+    row.className = 'cfg-row';
+    row.draggable = true;
+    row.dataset.idx = i;
+    row.innerHTML = `
+      <div class="drag-handle"><span></span><span></span><span></span></div>
+      <span class="cfg-row-text">${escHtml(line) || '<span style="opacity:.4">empty line</span>'}</span>
+      <button class="btn btn-danger" style="padding:3px 9px;font-size:11px" onclick="cfgRemoveLine(${i})">×</button>
+    `;
+    row.addEventListener('dragstart', e => { dragSrcIdx = i; row.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; });
+    row.addEventListener('dragend', () => { row.classList.remove('dragging'); document.querySelectorAll('.cfg-row').forEach(r => r.classList.remove('drop-target')); });
+    row.addEventListener('dragover', e => { e.preventDefault(); row.classList.add('drop-target'); });
+    row.addEventListener('dragleave', () => row.classList.remove('drop-target'));
+    row.addEventListener('drop', e => {
+      e.preventDefault();
+      if (dragSrcIdx === null || dragSrcIdx === i) return;
+      const moved = cfgLines.splice(dragSrcIdx, 1)[0];
+      cfgLines.splice(i, 0, moved);
+      dragSrcIdx = null;
+      renderCfgRows();
+    });
+    container.appendChild(row);
+  });
+}
+
+function cfgAddLine() {
+  const el = document.getElementById('cfgNewLine');
+  const val = el.value.trim();
+  if (!val) return toast('Enter a config line', 'warn');
+  cfgLines.push(val);
+  el.value = '';
+  renderCfgRows();
+  toast('Line added', 'success');
+}
+
+function cfgRemoveLine(i) {
+  cfgLines.splice(i, 1);
+  renderCfgRows();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+
+/* ══════════════════════════════════════════════
+   NODES
+══════════════════════════════════════════════ */
+let nodesData = [];
+
+async function fetchNodes() {
+  if (!loggedIn) return;
+  const r = await fetch('/nodes', { headers: AH }).catch(() => null);
+  if (!r || !r.ok) return;
+  const { nodes } = await r.json();
+  nodesData = nodes || [];
+  renderNodes();
+  populateClientNodeSelect();
+  renderHotloop();
+}
+
+function renderNodes() {
+  const el = document.getElementById('nodesList');
+  if (!nodesData.length) {
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px">No nodes yet — add one or check your Tailscale API key.</div>`;
+    return;
+  }
+  el.innerHTML = '';
+  nodesData.forEach(node => {
+    const statusClass = !node.enabled ? 'disabled-dot' : node.online ? 'online' : 'offline';
+    const statusLabel = !node.enabled ? 'Disabled' : node.online ? 'Online' : 'Offline';
+    const d = document.createElement('div');
+    d.className = 'node-card' + (node.enabled ? '' : ' disabled');
+    d.innerHTML = `
+      <div class="node-status ${statusClass}" title="${statusLabel}"></div>
+      <div class="node-info">
+        <div class="node-name">${node.name}</div>
+        <div class="node-region">📍 ${node.region}</div>
+        <div class="node-meta">${node.tailscaleIp || 'No TS IP'} · ${statusLabel}${node.lastSeen ? ' · ' + timeAgo(node.lastSeen) : ''}</div>
+      </div>
+      <div class="node-actions">
+        <span style="font-size:11.5px;color:var(--text-muted);font-weight:600;">${node.enabled ? 'Enabled' : 'Disabled'}</span>
+        <button class="toggle-pill${node.enabled ? ' on' : ''}" onclick="toggleNode('${node.id}',${!node.enabled})" title="${node.enabled ? 'Disable' : 'Enable'} node"></button>
+        <button class="btn btn-danger btn-sm" onclick="deleteNode('${node.id}')">Remove</button>
+      </div>
+    `;
+    el.appendChild(d);
+  });
+}
+
+async function toggleNode(id, enabled) {
+  const r = await fetch(`/nodes/${id}`, {
+    method: 'PATCH',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled })
+  }).catch(() => null);
+  if (r?.ok) { toast(enabled ? 'Node enabled' : 'Node disabled', enabled ? 'success' : 'warn'); fetchNodes(); }
+  else toast('Failed to update node', 'error');
+}
+
+async function deleteNode(id) {
+  const r = await fetch(`/nodes/${id}`, { method: 'DELETE', headers: AH }).catch(() => null);
+  if (r?.ok) { toast('Node removed', 'warn'); fetchNodes(); }
+  else toast('Failed to remove node', 'error');
+}
+
+async function addNode() {
+  const name   = document.getElementById('nodeNameIn').value.trim();
+  const region = document.getElementById('nodeRegionIn').value.trim();
+  const tsIp   = document.getElementById('nodeTsIpIn').value.trim();
+  const tsId   = document.getElementById('nodeTsIdIn').value.trim();
+  if (!name) return toast('Enter a node name', 'warn');
+  const r = await fetch('/nodes', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, region, tailscaleIp: tsIp || null, tailscaleId: tsId || null })
+  }).catch(() => null);
+  if (r?.ok) {
+    toast(`${name} added`, 'success');
+    closeModal('addNodeModal');
+    ['nodeNameIn','nodeRegionIn','nodeTsIpIn','nodeTsIdIn'].forEach(id => document.getElementById(id).value = '');
+    fetchNodes();
+  } else toast('Failed to add node', 'error');
+}
+
+/* ══════════════════════════════════════════════
+   JOIN INSTRUCTIONS
+══════════════════════════════════════════════ */
+async function renderJoinInstr() {
+  const authKey = document.getElementById('joinAuthKey').value.trim() || 'tskey-auth-YOUR_KEY';
+  const r = await fetch(`/nodes/join-instructions?authKey=${encodeURIComponent(authKey)}`, { headers: AH }).catch(() => null);
+  if (!r?.ok) return toast('Failed to load instructions', 'error');
+  const data = await r.json();
+  const container = document.getElementById('joinSteps');
+  container.innerHTML = '';
+  data.steps.forEach((step, i) => {
+    const div = document.createElement('div');
+    div.className = 'instr-cmd';
+    div.innerHTML = `
+      <div class="instr-cmd-label">${i + 1}. ${step.label}</div>
+      <pre class="instr-cmd-code">${step.cmd}</pre>
+      <button class="instr-cmd-copy" onclick="copyText(\`${step.cmd.replace(/`/g,"'")}\`, this)">Copy</button>
+    `;
+    container.appendChild(div);
+  });
+  if (data.note) {
+    const note = document.createElement('div');
+    note.style = 'font-size:12.5px;color:var(--text-secondary);padding:10px 0';
+    note.textContent = data.note;
+    container.appendChild(note);
+  }
+}
+
+function copyText(text, btn) {
+  navigator.clipboard.writeText(text).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = orig, 1500);
+  });
+}
+
+// auto-render when modal opens
+const _origOpenModal = openModal;
+openModal = function(id) {
+  _origOpenModal(id);
+  if (id === 'joinInstrModal') renderJoinInstr();
+  if (id === 'addClientModal') populateClientNodeSelect();
+};
+
+/* ══════════════════════════════════════════════
+   CLIENTS
+══════════════════════════════════════════════ */
+let clientsData = [];
+
+async function fetchClients() {
+  if (!loggedIn) return;
+  const r = await fetch('/clients', { headers: AH }).catch(() => null);
+  if (!r?.ok) return;
+  const { clients } = await r.json();
+  clientsData = clients || [];
+  renderClients();
+}
+
+function renderClients() {
+  const el = document.getElementById('clientsList');
+  if (!clientsData.length) {
+    el.innerHTML = `<div style="color:var(--text-muted);font-size:13px;text-align:center;padding:24px">No clients yet — add one.</div>`;
+    return;
+  }
+  el.innerHTML = '';
+  clientsData.forEach(client => {
+    const statusClass = client.online ? 'online' : 'offline';
+    const node = nodesData.find(n => n.id === client.defaultNode);
+    const d = document.createElement('div');
+    d.className = 'client-card';
+    d.innerHTML = `
+      <div class="node-status ${statusClass}"></div>
+      <div class="node-info">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="node-name">${client.name}</div>
+          ${node ? `<span class="default-node-badge">→ ${node.name}</span>` : ''}
+        </div>
+        <div class="node-meta">${client.tailscaleIp || client.tailscaleId || 'No TS info'} · ${client.online ? 'Online' : 'Offline'}${client.lastSeen ? ' · ' + timeAgo(client.lastSeen) : ''}</div>
+      </div>
+      <div class="node-actions">
+        <select onchange="setClientNode('${client.id}', this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;background:var(--input-bg);color:var(--text-primary);font-size:12px;cursor:pointer">
+          <option value="">No default</option>
+          ${nodesData.filter(n=>n.enabled).map(n=>`<option value="${n.id}"${client.defaultNode===n.id?' selected':''}>${n.name}</option>`).join('')}
+        </select>
+        <button class="btn btn-sm" style="background:var(--danger-light);color:var(--danger);border:1px solid rgba(239,68,68,.15);font-size:12px;padding:5px 11px" onclick="kickClient('${client.id}','${client.name}')">Kick</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteClient('${client.id}')">Remove</button>
+      </div>
+    `;
+    el.appendChild(d);
+  });
+}
+
+async function setClientNode(clientId, nodeId) {
+  await fetch(`/clients/${clientId}`, {
+    method: 'PATCH',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ defaultNode: nodeId || null })
+  });
+  fetchClients();
+}
+
+async function kickClient(id, name) {
+  const r = await fetch(`/clients/${id}/kick`, { method: 'POST', headers: AH }).catch(() => null);
+  if (r?.ok) { const d = await r.json(); toast(d.message || `${name} kicked`, 'warn'); fetchClients(); }
+  else toast('Kick failed — Tailscale API key may not be set', 'error');
+}
+
+async function deleteClient(id) {
+  const r = await fetch(`/clients/${id}`, { method: 'DELETE', headers: AH }).catch(() => null);
+  if (r?.ok) { toast('Client removed', 'warn'); fetchClients(); }
+  else toast('Failed', 'error');
+}
+
+async function addClient() {
+  const name    = document.getElementById('clientNameIn').value.trim();
+  const tsId    = document.getElementById('clientTsIdIn').value.trim();
+  const defNode = document.getElementById('clientDefaultNodeIn').value;
+  if (!name) return toast('Enter a client name', 'warn');
+  const r = await fetch('/clients', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, tailscaleId: tsId || null, defaultNode: defNode || null })
+  }).catch(() => null);
+  if (r?.ok) {
+    toast(`${name} added`, 'success');
+    closeModal('addClientModal');
+    document.getElementById('clientNameIn').value = '';
+    document.getElementById('clientTsIdIn').value = '';
+    fetchClients();
+  } else toast('Failed to add client', 'error');
+}
+
+function populateClientNodeSelect() {
+  const sel = document.getElementById('clientDefaultNodeIn');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">No default</option>' +
+    nodesData.filter(n => n.enabled).map(n => `<option value="${n.id}">${n.name} (${n.region})</option>`).join('');
+  populateSpeedTargetSel();
+}
+
+/* ══════════════════════════════════════════════
+   LIVE STATS
+══════════════════════════════════════════════ */
+let statsHistory = [];
+
+async function fetchStats() {
+  if (!loggedIn) return;
+  const r = await fetch('/stats', { headers: AH }).catch(() => null);
+  if (!r?.ok) return;
+  const data = await r.json();
+  renderStats(data);
+}
+
+function renderStats(data) {
+  const grid = document.getElementById('statsGrid');
+  const items = [
+    { label: 'Total Connections', value: data.totalConnections || 0, color: 'var(--accent)' },
+    { label: 'Online Clients',    value: data.clients || 0, color: 'var(--pink)' },
+    { label: 'Active Nodes',      value: (data.nodes||[]).filter(n=>n.online&&n.enabled).length, color: 'var(--success)' },
+    { label: 'Total Nodes',       value: (data.nodes||[]).length, color: 'var(--text-secondary)' },
+  ];
+  grid.innerHTML = items.map(i => `
+    <div style="padding:12px;background:var(--surface-elevated);border:1px solid var(--border);border-radius:10px">
+      <div style="font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text-muted);margin-bottom:4px">${i.label}</div>
+      <div style="font-size:28px;font-weight:800;letter-spacing:-1px;color:${i.color};font-variant-numeric:tabular-nums">${i.value}</div>
+    </div>
+  `).join('');
+
+  // Mini bar chart of connections per node
+  const bar = document.getElementById('statsBar');
+  const nodes = data.nodes || [];
+  if (nodes.length) {
+    const max = Math.max(...nodes.map(n => n.connections), 1);
+    bar.innerHTML = nodes.map(n => `
+      <div class="stat-bar-item" data-label="${n.name}" style="height:${Math.max(8, (n.connections/max)*76)}px" title="${n.name}: ${n.connections} connections"></div>
+    `).join('');
+  } else {
+    bar.innerHTML = '<div style="color:var(--text-muted);font-size:12px;padding:20px">No node data</div>';
+  }
+}
+
+/* ══════════════════════════════════════════════
+   TS API CONFIG SAVE
+══════════════════════════════════════════════ */
+async function saveTsConfig() {
+  const apiKey  = document.getElementById('tsApiKeyIn').value.trim();
+  const tailnet = document.getElementById('tsTailnetIn').value.trim() || '-';
+  if (!apiKey) return toast('Enter an API key', 'warn');
+
+  // Load current server.js and replace the TS config lines
+  const r = await fetch('/server-source', { headers: AH }).catch(() => null);
+  if (!r?.ok) return toast('Failed to load server.js', 'error');
+  let src = await r.text();
+
+  src = src.replace(/const TS_API_KEY\s*=.*$/m, `const TS_API_KEY  = process.env.TS_API_KEY  || '${apiKey}';`);
+  src = src.replace(/const TS_TAILNET\s*=.*$/m, `const TS_TAILNET  = process.env.TS_TAILNET  || '${tailnet}';`);
+
+  const w = await fetch('/server-source', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'text/plain' },
+    body: src
+  }).catch(() => null);
+
+  if (w?.ok) {
+    toast('Tailscale config saved — server restarting…', 'success');
+    closeModal('tsConfigModal');
+    // Poll for server coming back
+    setTimeout(() => {
+      let tries = 0;
+      const check = setInterval(() => {
+        tries++;
+        fetch('/connections', { headers: AH }).then(r => {
+          if (r.ok) { clearInterval(check); toast('Server back online', 'success'); fetchNodes(); }
+        }).catch(() => { if (tries > 20) clearInterval(check); });
+      }, 1500);
+    }, 1000);
+  } else toast('Failed to save', 'error');
+}
+
+/* ══════════════════════════════════════════════
+   UTILS
+══════════════════════════════════════════════ */
+function timeAgo(iso) {
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60)  return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s/60)}m ago`;
+  if (s < 86400) return `${Math.floor(s/3600)}h ago`;
+  return `${Math.floor(s/86400)}d ago`;
+}
+
+
+/* ══════════════════════════════════════════════
+   IP AUTH TOGGLE
+══════════════════════════════════════════════ */
+let ipAuthEnabled = true;
+
+async function loadAuthState() {
+  const r = await fetch('/settings', { headers: AH }).catch(() => null);
+  if (!r?.ok) return;
+  const data = await r.json();
+  ipAuthEnabled = data.ipAuthEnabled !== false;
+  renderAuthToggle();
+}
+
+function renderAuthToggle() {
+  const pill = document.getElementById('authTogglePill');
+  const sub  = document.getElementById('authToggleSub');
+  if (!pill) return;
+  pill.classList.toggle('on', ipAuthEnabled);
+  sub.textContent = ipAuthEnabled
+    ? 'Enabled — only whitelisted IPs can connect'
+    : 'Disabled — anyone can connect (bypass mode)';
+  sub.style.color = ipAuthEnabled ? '' : 'var(--warning)';
+}
+
+async function toggleIpAuth() {
+  ipAuthEnabled = !ipAuthEnabled;
+  renderAuthToggle();
+  const r = await fetch('/settings/auth', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ enabled: ipAuthEnabled })
+  }).catch(() => null);
+  if (r?.ok) toast(ipAuthEnabled ? 'IP auth enabled' : 'IP auth disabled — all IPs allowed', ipAuthEnabled ? 'success' : 'warn');
+  else { ipAuthEnabled = !ipAuthEnabled; renderAuthToggle(); toast('Failed to update auth', 'error'); }
+}
+
+/* ══════════════════════════════════════════════
+   SPEED TEST
+══════════════════════════════════════════════ */
+let speedRunning = false;
+let speedHistoryData = [];
+
+// Populate the node selector whenever nodes load
+function populateSpeedTargetSel() {
+  const sel = document.getElementById('speedTargetSel');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="hub">Hub (direct — this server)</option>' +
+    nodesData.map(n => `<option value="${n.id}" data-ip="${n.tailscaleIp || ''}">${n.name} — ${n.region}${n.tailscaleIp ? ' ('+n.tailscaleIp+')' : ' — no IP'}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+function onSpeedTargetChange() {
+  // Reset results when switching target
+  ['speedPing','speedDown','speedUp'].forEach(id => document.getElementById(id).textContent = '—');
+  ['pingBar','downBar','upBar'].forEach(id => document.getElementById(id).style.width = '0%');
+  document.getElementById('speedStatus').textContent = 'Ready — click Run Test';
+}
+
+// Get the base URL for the selected target
+// For hub: uses current window origin (relative URLs)
+// For a node: we can only ping via the hub's /nodes/:id/ping proxy endpoint
+function getSpeedTargetInfo() {
+  const sel = document.getElementById('speedTargetSel');
+  const val = sel.value;
+  const text = sel.options[sel.selectedIndex]?.text || 'Hub';
+  if (val === 'hub' || !val) {
+    return { label: 'Hub (direct)', nodeId: null, isHub: true };
+  }
+  const node = nodesData.find(n => n.id === val);
+  return { label: node ? node.name + ' (' + node.region + ')' : val, nodeId: val, isHub: false, node };
+}
+
+// Core speed test against a target
+async function runSpeedTestFor(target) {
+  const size = parseInt(document.getElementById('speedSizeSel')?.value) || 2097152;
+  const result = { label: target.label, ping: null, down: null, up: null, reachable: false, error: null };
+
+  try {
+    // ── Connectivity + Latency ──
+    let totalMs = 0; let worked = false;
+    for (let i = 0; i < 3; i++) {
+      try {
+        const t = Date.now();
+        if (target.isHub) {
+          await fetch('/ext/ping', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+        } else {
+          // Ping through hub proxy to node
+          await fetch(`/nodes/${target.nodeId}/ping`, { headers: AH, cache: 'no-store', signal: AbortSignal.timeout(4000) });
+        }
+        totalMs += Date.now() - t;
+        worked = true;
+      } catch(pe) { totalMs += 3000; }
+    }
+    result.reachable = worked;
+    result.ping = Math.round(totalMs / 3);
+
+    if (!worked) throw new Error('Node unreachable — check it is online and 3proxy is running');
+
+    // ── Download ──
+    const dlUrl = target.isHub ? `/speedtest?size=${size}` : `/nodes/${target.nodeId}/speedtest?size=${size}`;
+    const dlStart = Date.now();
+    const dlRes = await fetch(dlUrl, { headers: AH, cache: 'no-store', signal: AbortSignal.timeout(30000) });
+    if (!dlRes.ok) throw new Error('Download test returned ' + dlRes.status);
+    const dlBuf = await dlRes.arrayBuffer();
+    const dlElapsed = (Date.now() - dlStart) / 1000;
+    result.down = ((dlBuf.byteLength * 8) / dlElapsed / 1000000).toFixed(1);
+
+    // ── Upload ──
+    const ulUrl = target.isHub ? '/speedtest/upload' : `/nodes/${target.nodeId}/speedtest/upload`;
+    const ulData = new Uint8Array(Math.min(size, 1048576)).fill(0xAB);
+    const ulRes = await fetch(ulUrl, {
+      method: 'POST',
+      headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/octet-stream' },
+      body: ulData,
+      signal: AbortSignal.timeout(30000)
+    });
+    if (!ulRes.ok) throw new Error('Upload test returned ' + ulRes.status);
+    const ulJson = await ulRes.json();
+    result.up = ulJson.mbps;
+
+  } catch(e) {
+    result.error = e.message;
+    if (!result.reachable) result.ping = null;
+  }
+
+  return result;
+}
+
+async function runSpeedTest() {
+  if (speedRunning) return;
+  speedRunning = true;
+  const btn    = document.getElementById('speedBtn');
+  const status = document.getElementById('speedStatus');
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Testing…';
+
+  const target = getSpeedTargetInfo();
+  status.textContent = `Testing ${target.label}…`;
+
+  // Reset bars
+  ['speedPing','speedDown','speedUp'].forEach(id => document.getElementById(id).textContent = '…');
+
+  const result = await runSpeedTestFor(target);
+  applySpeedResults(result);
+  addSpeedHistory(result);
+
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg> Run Test';
+  speedRunning = false;
+}
+
+function applySpeedResults(result) {
+  const status = document.getElementById('speedStatus');
+
+  if (!result.reachable) {
+    document.getElementById('speedPing').textContent = '✗';
+    document.getElementById('speedDown').textContent = '✗';
+    document.getElementById('speedUp').textContent   = '✗';
+    status.textContent = `❌ ${result.label} — ${result.error || 'unreachable'}`;
+    toast(`${result.label}: not reachable`, 'error');
+    return;
+  }
+
+  if (result.ping !== null) {
+    document.getElementById('speedPing').textContent = result.ping;
+    const pingPct = Math.min(100, Math.max(5, 100 - (result.ping / 5)));
+    document.getElementById('pingBar').style.width = pingPct + '%';
+  }
+  if (result.down !== null) {
+    document.getElementById('speedDown').textContent = result.down;
+    document.getElementById('downBar').style.width = Math.min(100, (result.down / 100) * 100) + '%';
+  }
+  if (result.up !== null) {
+    document.getElementById('speedUp').textContent = result.up;
+    document.getElementById('upBar').style.width = Math.min(100, (result.up / 100) * 100) + '%';
+  }
+
+  const summary = `${result.ping}ms / ${result.down || '—'} Mbps ↓ / ${result.up || '—'} Mbps ↑`;
+  status.textContent = `✓ ${result.label} — ${summary}`;
+  toast(`${result.label}: ${summary}`, 'success');
+}
+
+function addSpeedHistory(result) {
+  speedHistoryData.unshift(result);
+  if (speedHistoryData.length > 10) speedHistoryData.pop();
+
+  const hist = document.getElementById('speedHistory');
+  const body = document.getElementById('speedHistoryBody');
+  hist.style.display = '';
+  body.innerHTML = speedHistoryData.map(r => {
+    const statusIcon = !r.reachable ? '<span style="color:var(--danger)">✗ Unreachable</span>'
+      : r.error ? `<span style="color:var(--warning)">⚠ Partial</span>`
+      : '<span style="color:var(--success)">✓ OK</span>';
+    return `<tr>
+      <td style="font-weight:600;font-size:12.5px">${r.label}</td>
+      <td class="bytes-cell">${r.ping !== null ? r.ping + 'ms' : '—'}</td>
+      <td class="bytes-cell">${r.down !== null ? r.down + ' Mbps' : '—'}</td>
+      <td class="bytes-cell">${r.up  !== null ? r.up  + ' Mbps' : '—'}</td>
+      <td>${statusIcon}</td>
+    </tr>`;
+  }).join('');
+}
+
+// Test every node one by one and build a comparison table
+async function runAllNodeTests() {
+  if (speedRunning) return;
+  speedRunning = true;
+  const btn = document.getElementById('speedAllBtn');
+  btn.disabled = true; btn.textContent = 'Testing all…';
+  document.getElementById('speedStatus').textContent = 'Testing all nodes…';
+
+  // Always test hub first
+  const hubResult = await runSpeedTestFor({ label: 'Hub (direct)', nodeId: null, isHub: true });
+  addSpeedHistory(hubResult);
+
+  // Then each node
+  for (const node of nodesData) {
+    if (!node.tailscaleIp) continue;
+    document.getElementById('speedStatus').textContent = `Testing ${node.name}…`;
+    const result = await runSpeedTestFor({ label: node.name + ' (' + node.region + ')', nodeId: node.id, isHub: false, node });
+    addSpeedHistory(result);
+  }
+
+  // Apply results of last tested to the main display
+  if (speedHistoryData.length) applySpeedResults(speedHistoryData[0]);
+  document.getElementById('speedStatus').textContent = 'All nodes tested — see results below';
+  btn.disabled = false; btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg> Test All Nodes';
+  speedRunning = false;
+}
+
+// Quick connectivity check — just pings each node, no download/upload
+async function checkAllConnections() {
+  const btn = document.getElementById('connCheckBtn');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  document.getElementById('speedStatus').textContent = 'Checking connectivity…';
+
+  const strip = document.getElementById('connCheckStrip');
+  strip.innerHTML = '';
+
+  // Hub
+  const hubStart = Date.now();
+  let hubOk = false;
+  try {
+    await fetch('/ext/ping', { cache: 'no-store', signal: AbortSignal.timeout(3000) });
+    hubOk = true;
+  } catch {}
+  const hubMs = Date.now() - hubStart;
+  strip.appendChild(makeConnChip('Hub', hubOk, hubOk ? hubMs + 'ms' : 'offline'));
+
+  // Each node
+  for (const node of nodesData) {
+    if (!node.tailscaleIp) {
+      strip.appendChild(makeConnChip(node.name, false, 'no IP'));
+      continue;
+    }
+    const start = Date.now();
+    let ok = false;
+    try {
+      const r = await fetch(`/nodes/${node.id}/ping`, { headers: AH, cache: 'no-store', signal: AbortSignal.timeout(4000) });
+      ok = r.ok;
+    } catch {}
+    const ms = Date.now() - start;
+    strip.appendChild(makeConnChip(node.name, ok, ok ? ms + 'ms' : 'offline'));
+  }
+
+  document.getElementById('speedStatus').textContent = 'Connectivity check complete';
+  btn.disabled = false;
+  btn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg> Check Connectivity';
+}
+
+function makeConnChip(name, ok, detail) {
+  const chip = document.createElement('div');
+  chip.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid ${ok ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.2)'};background:${ok ? 'var(--success-light)' : 'var(--danger-light)'};color:${ok ? 'var(--success)' : 'var(--danger)'};`;
+  chip.innerHTML = `<span>${ok ? '●' : '○'}</span><span>${name}</span><span style="opacity:0.7;font-family:monospace;font-size:11px">${detail}</span>`;
+  return chip;
+}
+
+/* ══════════════════════════════════════════════
+   HOTLOOP
+══════════════════════════════════════════════ */
+let hotloopData = {};
+
+async function loadHotloop() {
+  const r = await fetch('/hotloop', { headers: AH }).catch(() => null);
+  if (!r?.ok) return;
+  hotloopData = await r.json();
+  renderHotloop();
+}
+
+function renderHotloop() {
+  const pill = document.getElementById('hlTogglePill');
+  const lbl  = document.getElementById('hlEnabledLbl');
+  if (!pill) return;
+  pill.classList.toggle('on', hotloopData.enabled);
+  lbl.textContent = hotloopData.enabled ? 'Enabled' : 'Disabled';
+
+  // Populate node selects
+  const pSel = document.getElementById('hlPrimary');
+  const fSel = document.getElementById('hlFallback');
+  const opts = '<option value="">— None —</option>' +
+    nodesData.map(n => `<option value="${n.id}">${n.name} (${n.region})</option>`).join('');
+  pSel.innerHTML = opts;
+  fSel.innerHTML = opts;
+  if (hotloopData.primaryNode)  pSel.value = hotloopData.primaryNode;
+  if (hotloopData.fallbackNode) fSel.value = hotloopData.fallbackNode;
+
+  const w = hotloopData.primaryWeight || 900;
+  document.getElementById('hlWeightSlider').value = w;
+  updateWeightLabel(w);
+
+  // Primary/fallback labels
+  const pNode = nodesData.find(n => n.id === hotloopData.primaryNode);
+  const fNode = nodesData.find(n => n.id === hotloopData.fallbackNode);
+  document.getElementById('hlPrimaryLbl').textContent  = pNode?.name || 'Primary';
+  document.getElementById('hlFallbackLbl').textContent = fNode?.name || 'Fallback';
+
+  // Mode tabs
+  ['Weighted','Latency','Manual'].forEach(m => {
+    const el = document.getElementById('mode' + m);
+    if (el) el.classList.toggle('active', hotloopData.mode === m.toLowerCase());
+  });
+}
+
+function updateWeightLabel(val) {
+  const pct = Math.round((val / 1000) * 100);
+  document.getElementById('hlWeightVal').textContent = pct + '%';
+  const pNode = nodesData.find(n => n.id === document.getElementById('hlPrimary').value);
+  if (pNode) document.getElementById('hlPrimaryLbl').textContent = pNode.name;
+  const fNode = nodesData.find(n => n.id === document.getElementById('hlFallback').value);
+  if (fNode) document.getElementById('hlFallbackLbl').textContent = fNode.name;
+}
+
+function setHlMode(mode) {
+  hotloopData.mode = mode;
+  renderHotloop();
+  saveHotloop();
+}
+
+async function toggleHotloop() {
+  hotloopData.enabled = !hotloopData.enabled;
+  renderHotloop();
+  await saveHotloop();
+}
+
+async function saveHotloop() {
+  hotloopData.primaryNode   = document.getElementById('hlPrimary').value || null;
+  hotloopData.fallbackNode  = document.getElementById('hlFallback').value || null;
+  hotloopData.primaryWeight = parseInt(document.getElementById('hlWeightSlider').value);
+  const r = await fetch('/hotloop', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' },
+    body: JSON.stringify(hotloopData)
+  }).catch(() => null);
+  if (r?.ok) {
+    const d = await r.json();
+    hotloopData = d.hotloop;
+    toast('Hotloop saved — proxy restarting', 'success');
+  } else toast('Failed to save hotloop', 'error');
+}
+
+/* ══════════════════════════════════════════════
+   LIVE CLIENT STATS
+══════════════════════════════════════════════ */
+async function fetchLiveStats() {
+  if (!loggedIn) return;
+  const r = await fetch('/client-stats', { headers: AH }).catch(() => null);
+  if (!r?.ok) return;
+  const { stats } = await r.json();
+  renderLiveStats(stats);
+}
+
+function renderLiveStats(stats) {
+  const tb = document.getElementById('liveStatsTable');
+  if (!tb) return;
+  const entries = Object.entries(stats || {});
+  if (!entries.length) {
+    tb.innerHTML = `<tr class="empty-row"><td colspan="6">No connection data yet — waiting for 3proxy log</td></tr>`;
+    return;
+  }
+  tb.innerHTML = '';
+  entries.sort((a,b) => new Date(b[1].lastSeen) - new Date(a[1].lastSeen)).slice(0, 20).forEach(([ip, s]) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="ipcell">${ip}</td>
+      <td class="bytes-cell">${fmtBytes(s.bytesIn)}</td>
+      <td class="bytes-cell">${fmtBytes(s.bytesOut)}</td>
+      <td class="rate-cell">${fmtRate(s.recvRate)}</td>
+      <td class="rate-cell">${fmtRate(s.sendRate)}</td>
+      <td class="bytes-cell">${fmtDuration(s.duration)}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+function fmtBytes(b) {
+  if (!b || b === 0) return '—';
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+  if (b < 1073741824) return (b/1048576).toFixed(1) + ' MB';
+  return (b/1073741824).toFixed(2) + ' GB';
+}
+function fmtRate(bps) {
+  if (!bps || bps === 0) return '—';
+  const mbps = (bps * 8 / 1000000).toFixed(2);
+  return mbps + ' Mbps';
+}
+function fmtDuration(ms) {
+  if (!ms || ms === 0) return '—';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return s + 's';
+  if (s < 3600) return Math.floor(s/60) + 'm ' + (s%60) + 's';
+  return Math.floor(s/3600) + 'h ' + Math.floor((s%3600)/60) + 'm';
+}
+
+/* ══════════════════════════════════════════════
+   SERVER.JS EDITOR
+══════════════════════════════════════════════ */
+let srvEditorOpen = false;
+
+function toggleServerEditor() {
+  srvEditorOpen = !srvEditorOpen;
+  document.getElementById('srvPanel').classList.toggle('open', srvEditorOpen);
+  document.getElementById('srvChevron').classList.toggle('open', srvEditorOpen);
+  if (srvEditorOpen && !document.getElementById('srvText').value) loadServerJs();
+}
+
+function loadServerJs() {
+  fetch('/server-source', { headers: AH })
+    .then(r => { if (!r.ok) throw new Error(); return r.text(); })
+    .then(text => {
+      document.getElementById('srvText').value = text;
+      toast('server.js loaded', 'success');
+    })
+    .catch(() => toast('Failed to load server.js', 'error'));
+}
+
+function confirmSaveServerJs() {
+  openModal('saveServerModal');
+}
+
+function doSaveServerJs() {
+  closeModal('saveServerModal');
+  const code = document.getElementById('srvText').value;
+  toast('Saving and restarting…', 'warn');
+  fetch('/server-source', {
+    method: 'POST',
+    headers: { ...Object.fromEntries(AH), 'Content-Type': 'text/plain' },
+    body: code
+  }).then(r => {
+    if (!r.ok) throw new Error();
+    toast('Saved — server restarting, reconnecting…', 'info');
+    // Poll until it comes back up
+    let attempts = 0;
+    const check = setInterval(() => {
+      attempts++;
+      fetch('/connections', { headers: AH })
+        .then(r => { if (!r.ok) throw new Error(); return r.json(); })
+        .then(() => {
+          clearInterval(check);
+          toast('Server is back online ✓', 'success');
+          setStatus(true);
+        })
+        .catch(() => {
+          setStatus(false);
+          if (attempts > 30) { clearInterval(check); toast('Server did not come back — check for syntax errors', 'error'); }
+        });
+    }, 1500);
+  }).catch(() => toast('Failed to save server.js', 'error'));
+}
+
+/* ══════════════════════════════════════════════
+   INIT — check session cookie on load
+══════════════════════════════════════════════ */
+tryAutoLogin();
+</script>
+</body>
+</html>

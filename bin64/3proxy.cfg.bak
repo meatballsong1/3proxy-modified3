@@ -1,0 +1,14 @@
+nserver 1.1.1.1
+nserver 8.8.8.8
+nscache 65536
+
+auth none
+
+# Whitelist ONLY
+include whitelist.cfg
+deny *
+
+log -
+logformat "- +_L %h %p %E %U %C:%c %R:%r %O %I %h %T"
+
+socks -p1080
