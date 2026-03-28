@@ -7,7 +7,7 @@ const http     = require('http');
 const net      = require('net');
 const readline = require('readline');
 const app      = express();
-const PORT     = 80;
+const PORT     = 8080;
 
 // ─── AUTH ────────────────────────────────────────────────────────────────────
 const USER  = 'oofbomb';
