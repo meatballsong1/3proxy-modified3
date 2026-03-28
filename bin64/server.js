@@ -71,7 +71,7 @@ let portRoutes = loadJson(SETTINGS_FILE, {}).portRoutes || {};
 const portProxyProcesses = {};
 
 function buildPortRouteCfg(port, node) {
-    const logPath = path.join(__dirname, `3proxy-port${port}.log`);
+const logPath = path.join(__dirname, 'logs', `3proxy-port${port}.log`);
     return [
         'nserver 1.1.1.1',
         'nserver 8.8.8.8',
