@@ -36,8 +36,6 @@ async function init() {
     }
 
     doRefresh();
-    // Only check whitelist if not already connected — no point showing the error
-    // to someone who is actively tunnelled through the proxy
     if (!vpnState.connected) checkWhitelist();
 }
 
@@ -63,7 +61,6 @@ chrome.runtime.onMessage.addListener(m => {
         case 'DISCONNECTED':
             vpnState = { connected: false };
             applyVisualState(vpnState);
-            // Re-check whitelist now that they're disconnected
             checkWhitelist();
             break;
         case 'NODES_UPDATED':
@@ -116,12 +113,22 @@ async function autoSelect() {
 }
 
 // ── Ping all nodes ────────────────────────────────────────────────────────────
+// FIX: each node is pinged via the hub's /nodes/:id/ping endpoint which
+// does a TCP connect to the node's Tailscale IP:3128 and returns the
+// measured latency. Previously every node hit the same /ext/ping URL
+// which only measured hub→client RTT, not the actual node latency.
 async function pingAll() {
     const data = await store('get', ['hubUrl']);
     const hub = (data.hubUrl || HUB_DEFAULT).replace(/\/$/, '');
+
     await Promise.all(nodes.map(async n => {
-        const r = await msg({ type: 'PING_NODE', url: `${hub}/ext/ping` });
-        pingResults[n.id] = r.latencyMs;
+        try {
+            const r = await msg({ type: 'PING_NODE', url: `${hub}/nodes/${n.id}/ping` });
+            // Hub returns { latencyMs } from its TCP connect test to the node
+            pingResults[n.id] = r.latencyMs ?? null;
+        } catch {
+            pingResults[n.id] = null;
+        }
     }));
     renderServers();
 }
@@ -206,34 +213,19 @@ function applyVisualState(s) {
 }
 
 function setConnected(name) {
-    // Button — power on glow
     const btn = $('connectBtn');
     btn.className = 'connect-btn connected';
-
-    // Ring fills green
     $('ringFill').className = 'ring-fill connected';
-
-    // Status text
     $('statusMain').className   = 'status-main on';
     $('statusMain').textContent = '● Protected';
     $('statusSub').textContent  = 'via ' + (name || 'VPN Node');
-
-    // Button label — centered with no extra spacing
     $('btnLbl').textContent = 'Disconnect';
-
-    // Mesh background shifts green
     $('mesh').className = 'mesh connected';
-
-    // Logo
     $('logoIcon').className  = 'logo-icon connected';
     $('logoSpan').className  = 'connected';
-
     $('connectedLbl').textContent = name || '';
     vpnState.connected = true;
-
-    // Hide whitelist error — they're connected, it's irrelevant
     hideErr();
-
     renderServers();
 }
 
@@ -252,7 +244,6 @@ function setDisconnected() {
     renderServers();
 }
 
-// Accepts optional label so "Disconnecting…" and "Connecting…" both work
 function setConnectingAnim(label) {
     $('connectBtn').className   = 'connect-btn connecting';
     $('ringFill').className     = 'ring-fill connecting';
@@ -270,12 +261,9 @@ function setHubStatus(online) {
 
 // ── Whitelist check ───────────────────────────────────────────────────────────
 async function checkWhitelist() {
-    // Never show whitelist error while actively connected through the proxy
     if (vpnState.connected) { hideErr(); return; }
-
     const r = await msg({ type: 'CHECK_WHITELIST' });
     if (r.allowed === false) {
-        // Strip IPv6-mapped prefix ::ffff: for cleaner display
         const cleanIp = (r.ip || '').replace(/^::ffff:/, '');
         showErr('Not Whitelisted ✗', `Your IP ${cleanIp} isn't on the access list. Ask your admin to add it.`);
     } else if (r.allowed === true) {
