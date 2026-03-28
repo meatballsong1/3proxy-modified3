@@ -7,7 +7,7 @@
     "tailscaleId": null,
     "enabled": true,
     "online": true,
-    "lastSeen": "2026-03-28T14:55:44Z",
+    "lastSeen": "2026-03-28T14:55:54Z",
     "addedAt": "2026-03-25T23:22:08.842Z",
     "connections": 0,
     "hostname": "DESKTOP-OAO78NU"
@@ -20,7 +20,7 @@
     "tailscaleId": null,
     "enabled": true,
     "online": true,
-    "lastSeen": "2026-03-28T14:55:44Z",
+    "lastSeen": "2026-03-28T14:55:54Z",
     "addedAt": "2026-03-25T23:44:28.795Z",
     "connections": 0,
     "hostname": "vpn-node-nyc-node-1"
@@ -33,7 +33,7 @@
     "tailscaleId": null,
     "enabled": true,
     "online": true,
-    "lastSeen": "2026-03-28T14:55:44Z",
+    "lastSeen": "2026-03-28T14:55:54Z",
     "addedAt": "2026-03-28T02:42:12.439Z",
     "connections": 0,
     "hostname": "vpn-node-chicago-node"
