@@ -104,16 +104,11 @@ step "Removing Existing 3proxy (if any)"
 
 systemctl stop 3proxy 2>/dev/null || true
 systemctl disable 3proxy 2>/dev/null || true
-
-# Kill any running instances
 pkill -f 3proxy 2>/dev/null || true
 sleep 1
 
-# Remove old packages and files
 apt-get purge -y -qq 3proxy 2>/dev/null || true
 dpkg --purge 3proxy 2>/dev/null || true
-
-# Nuke old config and log dirs (we'll recreate)
 rm -rf /usr/local/3proxy /etc/3proxy /var/log/3proxy 2>/dev/null || true
 success "Old 3proxy removed"
 
@@ -131,36 +126,29 @@ info "Installing package..."
 dpkg -i "$DEB_FILE" || apt-get install -f -y -qq
 rm -f "$DEB_FILE"
 
-# Verify install
-PROXY_BIN=$(command -v 3proxy || echo "/usr/local/3proxy/bin/3proxy")
+PROXY_BIN=$(command -v 3proxy || echo "/usr/bin/3proxy")
 [[ ! -f "$PROXY_BIN" ]] && PROXY_BIN="/usr/bin/3proxy"
 [[ ! -f "$PROXY_BIN" ]] && error "3proxy binary not found after install"
 success "3proxy installed: $PROXY_BIN"
-$PROXY_BIN --version 2>&1 | head -1 || true
 
 # ── Create directory structure ────────────────────────────────────────────────
 step "Creating Directory Structure"
-
-# The .deb puts config at /usr/local/3proxy/conf/ symlinked from /etc/3proxy/conf/
-# Logs at /usr/local/3proxy/logs/ symlinked from /var/log/3proxy
-# We work with the canonical symlink paths
 
 CFG_DIR="/etc/3proxy/conf"
 LOG_DIR="/var/log/3proxy"
 
 mkdir -p "$CFG_DIR" "$LOG_DIR"
-mkdir -p /usr/local/3proxy/logs
-chmod 777 /usr/local/3proxy/logs
+mkdir -p /usr/local/3proxy/conf /usr/local/3proxy/logs
 
-# If symlinks don't exist, make them point to /usr/local/3proxy equivalents
-[[ -d /usr/local/3proxy/conf ]] || mkdir -p /usr/local/3proxy/conf
-[[ -d /usr/local/3proxy/logs ]] || mkdir -p /usr/local/3proxy/logs
+# Ensure log dir is writable by 3proxy
+chmod 755 "$LOG_DIR"
+chown root:root "$LOG_DIR"
 
-# Ensure symlinks
+# Symlinks
 [[ -L "$CFG_DIR" ]] || { rm -rf "$CFG_DIR"; ln -sfn /usr/local/3proxy/conf "$CFG_DIR"; }
 [[ -L "$LOG_DIR" ]] || { rm -rf "$LOG_DIR"; ln -sfn /usr/local/3proxy/logs "$LOG_DIR"; }
 
-# Whitelist file — hub's Tailscale IP is always allowed
+# Whitelist file
 WHITELIST_CFG="$CFG_DIR/whitelist.cfg"
 echo "allow * $HUB_TS_IP" > "$WHITELIST_CFG"
 
@@ -171,6 +159,9 @@ info "  Whitelist: $WHITELIST_CFG"
 
 # ── Write 3proxy config ───────────────────────────────────────────────────────
 step "Writing 3proxy Config"
+
+# FIX: log path uses the real resolved path, not /logs which doesn't exist
+LOG_FILE="$LOG_DIR/3proxy.log"
 
 cat > "$CFG_DIR/3proxy.cfg" << PROXYCFG
 # ─── ProxyHub Node Config ─────────────────────────────────────────────────────
@@ -184,10 +175,8 @@ nserver 8.8.8.8
 nscache 65536
 timeouts 1 5 30 60 180 1800 15 60
 
-# daemon — removed, systemd handles this
-
 # Full stats logging — parsed by hub's Node.js server
-log /logs/3proxy.log D
+log $LOG_FILE D
 logformat "STAT %t %C %I %O %D %b %B %R %U %h"
 logdump 1048576 1048576
 
@@ -210,7 +199,9 @@ success "Config written to $CFG_DIR/3proxy.cfg"
 # ── Write systemd service ─────────────────────────────────────────────────────
 step "Setting Up systemd Service"
 
-# The .deb usually drops a service file — we overwrite it to be safe
+# FIX: Type=simple — we removed 'daemon' from the config so 3proxy stays in
+# the foreground. Type=forking requires a PID file which 3proxy only writes
+# when running as a daemon. Using simple avoids the protocol/PIDFile error.
 cat > /etc/systemd/system/3proxy.service << SVCEOF
 [Unit]
 Description=3proxy ProxyHub Node ($NODE_NAME)
@@ -218,11 +209,9 @@ After=network-online.target tailscaled.service
 Wants=network-online.target
 
 [Service]
-Type=forking
+Type=simple
 ExecStart=$PROXY_BIN $CFG_DIR/3proxy.cfg
 ExecReload=/bin/kill -HUP \$MAINPID
-ExecStop=/bin/kill -TERM \$MAINPID
-PIDFile=/run/3proxy.pid
 Restart=on-failure
 RestartSec=5s
 StandardOutput=journal
@@ -241,12 +230,12 @@ if systemctl is-active --quiet 3proxy; then
     success "3proxy is running"
 else
     warn "3proxy may not have started — check: journalctl -u 3proxy -n 50"
+    journalctl -u 3proxy -n 20 --no-pager || true
 fi
 
 # ── Firewall ──────────────────────────────────────────────────────────────────
 step "Configuring Firewall"
 
-# Only allow 1080/3128 FROM the hub's Tailscale IP — nothing public
 ufw --force reset 2>/dev/null || true
 ufw default deny incoming
 ufw default allow outgoing
@@ -282,7 +271,7 @@ echo -e "  ${BOLD}Tailscale IP:${RESET}   $NODE_TS_IP"
 echo -e "  ${BOLD}SOCKS5 port:${RESET}    $NODE_TS_IP:1080"
 echo -e "  ${BOLD}HTTP port:${RESET}      $NODE_TS_IP:3128"
 echo -e "  ${BOLD}Config:${RESET}         $CFG_DIR/3proxy.cfg"
-echo -e "  ${BOLD}Logs:${RESET}           $LOG_DIR/3proxy.log"
+echo -e "  ${BOLD}Logs:${RESET}           $LOG_FILE"
 echo ""
 echo -e "  ${BOLD}Manage 3proxy:${RESET}"
 echo -e "    ${CYAN}systemctl start 3proxy${RESET}    — start"
@@ -290,12 +279,12 @@ echo -e "    ${CYAN}systemctl stop 3proxy${RESET}     — stop"
 echo -e "    ${CYAN}systemctl restart 3proxy${RESET}  — restart"
 echo -e "    ${CYAN}systemctl status 3proxy${RESET}   — check status"
 echo -e "    ${CYAN}journalctl -u 3proxy -f${RESET}   — live logs"
-echo -e "    ${CYAN}tail -f $LOG_DIR/3proxy.log${RESET}"
+echo -e "    ${CYAN}tail -f $LOG_FILE${RESET}"
 echo ""
 echo -e "  ${BOLD}Add this node to your dashboard:${RESET}"
-echo -e "    Name:        $NODE_NAME"
+echo -e "    Name:         $NODE_NAME"
 echo -e "    Tailscale IP: ${YELLOW}$NODE_TS_IP${RESET}"
-echo -e "    Region:      (enter your city)"
+echo -e "    Region:       (enter your city)"
 echo ""
-echo -e "  ${BOLD}Add hub to whitelist.cfg:${RESET}  ${CYAN}echo 'allow * $HUB_TS_IP' >> $WHITELIST_CFG${RESET}"
+echo -e "  ${BOLD}Add hub to whitelist:${RESET}  ${CYAN}echo 'allow * $HUB_TS_IP' >> $WHITELIST_CFG${RESET}"
 echo ""
