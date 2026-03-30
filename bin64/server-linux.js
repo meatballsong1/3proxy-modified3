@@ -48,11 +48,22 @@ const HOTLOOP_FILE  = path.join(__dirname, 'hotloop.json');
 const LOG_FILE      = path.join(__dirname, '3proxy.log');
 const SERVER_FILE   = __filename;
 
-// Auto-detect 3proxy binary
+// Auto-detect 3proxy binary — checks local dir first (3proxy.exe), then system
 function find3proxy() {
-    const candidates = ['/usr/bin/3proxy', '/usr/local/bin/3proxy', path.join(__dirname, '3proxy'), path.join(__dirname, '3proxy.exe')];
-    for (const c of candidates) if (fs.existsSync(c)) return c;
-    return '3proxy'; // fallback to PATH
+    const candidates = [
+        path.join(__dirname, '3proxy.exe'),   // your custom build
+        path.join(__dirname, '3proxy'),
+        '/usr/bin/3proxy',
+        '/usr/local/bin/3proxy',
+    ];
+    for (const c of candidates) {
+        if (fs.existsSync(c)) {
+            // Ensure it's executable
+            try { fs.chmodSync(c, 0o755); } catch {}
+            return c;
+        }
+    }
+    return path.join(__dirname, '3proxy.exe'); // fallback — will chmod on use
 }
 const PROXY_EXE = find3proxy();
 console.log('[3proxy] binary:', PROXY_EXE);
@@ -676,8 +687,114 @@ app.post('/nodes/:id/speedtest/upload', (req, res) => {
 const LOGS_DIR = path.join(__dirname, 'logs');
 if (!fs.existsSync(LOGS_DIR)) fs.mkdirSync(LOGS_DIR, { recursive: true });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`ProxyHub dashboard → http://localhost:${PORT}`);
+// ─── WEBSOCKET SSH TERMINAL ──────────────────────────────────────────────────
+const { createServer } = require('http');
+const { WebSocketServer } = require('ws');
+
+const httpServer = createServer(app);
+const wss = new WebSocketServer({ server: httpServer, path: '/terminal' });
+
+wss.on('connection', (ws, req) => {
+    const url = new URL(req.url, 'http://localhost');
+    const nodeId = url.searchParams.get('node') || 'hub';
+    const tok    = url.searchParams.get('token') || '';
+    if (tok !== TOKEN && settings.dashAuthEnabled !== false) {
+        ws.send('\r\n[Unauthorized]\r\n');
+        ws.close();
+        return;
+    }
+
+    let sshProc;
+    if (nodeId === 'hub') {
+        sshProc = require('child_process').spawn('bash', [], {
+            env: { ...process.env, TERM: 'xterm-256color' },
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        ws.send('\r\n[HUB] Local shell ready\r\n');
+    } else {
+        const node = nodeRegistry[nodeId];
+        if (!node || !node.tailscaleIp) {
+            ws.send('\r\n[Error] Node not found or no IP\r\n');
+            ws.close();
+            return;
+        }
+        sshProc = require('child_process').spawn('ssh', [
+            '-o', 'StrictHostKeyChecking=no',
+            '-o', 'ConnectTimeout=10',
+            '-tt',
+            'root@' + node.tailscaleIp,
+        ], {
+            env: { ...process.env, TERM: 'xterm-256color' },
+            stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        ws.send('\r\n[SSH] Connecting to ' + (node.name || nodeId) + ' (' + node.tailscaleIp + ')...\r\n');
+    }
+
+    sshProc.stdout.on('data', function(d) { if (ws.readyState === 1) ws.send(d.toString()); });
+    sshProc.stderr.on('data', function(d) { if (ws.readyState === 1) ws.send(d.toString()); });
+    sshProc.on('close', function() {
+        if (ws.readyState === 1) ws.send('\r\n[disconnected]\r\n');
+        ws.close();
+    });
+    ws.on('message', function(data) { try { sshProc.stdin.write(data); } catch(e) {} });
+    ws.on('close',   function()      { try { sshProc.kill();          } catch(e) {} });
+});
+
+// ─── TERMINAL PAGE ────────────────────────────────────────────────────────────
+app.get('/terminal', (req, res) => {
+    const nodeId = req.query.node || 'hub';
+    const node = nodeId === 'hub' ? { name: 'Hub', id: 'hub' } : nodeRegistry[nodeId];
+    const nodeName = node?.name || nodeId;
+    res.setHeader('Content-Type', 'text/html');
+    res.send(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Terminal — ${nodeName}</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/xterm.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xterm/5.3.0/addon-fit.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0d1117;color:#e6edf3;font-family:'JetBrains Mono',monospace;display:flex;flex-direction:column;height:100vh}
+.hdr{height:40px;background:#161b22;border-bottom:1px solid #21262d;display:flex;align-items:center;padding:0 14px;gap:10px;flex-shrink:0}
+.hdr-title{font-size:12px;font-weight:700;color:#c9a227}
+.hdr-node{font-size:11px;color:#8b949e}
+.hdr-close{margin-left:auto;font-size:11px;color:#8b949e;cursor:pointer;padding:3px 10px;border:1px solid #30363d;border-radius:5px;background:none;text-decoration:none}
+.hdr-close:hover{color:#e6edf3;border-color:#8b949e}
+#terminal{flex:1;padding:8px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <span class="hdr-title">⌨ Terminal</span>
+  <span class="hdr-node">${nodeName}</span>
+  <a class="hdr-close" onclick="window.close()">✕ close</a>
+</div>
+<div id="terminal"></div>
+<script>
+const term = new Terminal({ theme:{background:'#0d1117',foreground:'#e6edf3',cursor:'#c9a227',selectionBackground:'rgba(201,162,39,0.3)'}, fontSize:13, fontFamily:"'JetBrains Mono',monospace", cursorBlink:true });
+const fitAddon = new FitAddon.FitAddon();
+term.loadAddon(fitAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+window.addEventListener('resize', () => fitAddon.fit());
+
+const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+const tok = btoa('oofbomb:malaop0989');
+const ws = new WebSocket(proto + '://' + location.host + '/terminal?node=${nodeId}&token=' + tok);
+ws.onopen    = () => term.write('\r\n\x1b[32mConnected\x1b[0m\r\n');
+ws.onmessage = e => term.write(e.data);
+ws.onclose   = () => term.write('\r\n\x1b[31mDisconnected\x1b[0m\r\n');
+term.onData(d => ws.readyState === 1 && ws.send(d));
+</script>
+</body>
+</html>`);
+});
+
+app.listen = undefined; // replaced by httpServer.listen below
+
+httpServer.listen(PORT, '0.0.0.0', () => {    console.log(`ProxyHub dashboard → http://localhost:${PORT}`);
     console.log(`3proxy binary: ${PROXY_EXE}`);
     console.log(`IP Auth: ${settings.ipAuthEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`Dash Auth: ${settings.dashAuthEnabled !== false ? 'ENABLED' : 'DISABLED'}`);
@@ -685,4 +802,3 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`Port routes: ${Object.keys(portRoutes).length} configured`);
     notify('info', 'ProxyHub started');
 });
-// ih

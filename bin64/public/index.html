@@ -1869,6 +1869,270 @@ function timeAgo(iso) {
    INIT
 ══════════════════════════════════════════════ */
 tryAutoLogin();
+// ═══════════════════════════════════════════════════════
+/* ── DASHBOARD AUTH TOGGLE ─────────────────────────────── */
+let dashAuth = true;
+
+async function loadDashAuthState() {
+  const r = await fetch('/settings', {headers:AH}).catch(()=>null);
+  if (!r?.ok) return;
+  const d = await r.json();
+  dashAuth = d.dashAuthEnabled !== false;
+  renderDashAuthToggle();
+}
+
+function renderDashAuthToggle() {
+  const pill = document.getElementById('dashAuthPill');
+  const sub  = document.getElementById('dashAuthSub');
+  if (!pill) return;
+  pill.classList.toggle('on', dashAuth);
+  sub.textContent = dashAuth ? 'Enabled — login required' : 'Disabled — anyone can access dashboard';
+  sub.style.color = dashAuth ? '' : 'var(--yellow)';
+}
+
+async function toggleDashAuth() {
+  dashAuth = !dashAuth;
+  renderDashAuthToggle();
+  const r = await fetch('/settings/dash-auth', {
+    method:'POST',
+    headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},
+    body: JSON.stringify({enabled: dashAuth})
+  }).catch(()=>null);
+  if (r?.ok) toast(dashAuth ? 'Dashboard auth enabled' : 'Dashboard auth disabled — anyone can access', dashAuth ? 'success' : 'warn');
+  else { dashAuth = !dashAuth; renderDashAuthToggle(); toast('Failed','error'); }
+}
+
+/* ── NOTIFICATIONS ─────────────────────────────────────── */
+let notifOpen = false;
+
+function toggleNotifPanel() {
+  notifOpen = !notifOpen;
+  const panel = document.getElementById('notifPanel');
+  if (panel) panel.style.display = notifOpen ? 'block' : 'none';
+  if (notifOpen) fetchNotifications();
+}
+
+async function fetchNotifications() {
+  const r = await fetch('/notifications', {headers:AH}).catch(()=>null);
+  if (!r?.ok) return;
+  const {notifications} = await r.json();
+  const el = document.getElementById('notifList');
+  const badge = document.getElementById('notifBadge');
+  if (!el) return;
+  const errors = (notifications||[]).filter(n=>n.level==='error'||n.level==='warn');
+  if (badge) { badge.style.display = errors.length ? '' : 'none'; badge.textContent = errors.length; }
+  if (!notifications?.length) { el.innerHTML = '<div style="color:var(--text3);font-size:13px;text-align:center;padding:14px">No notifications</div>'; return; }
+  el.innerHTML = '';
+  notifications.forEach(n => {
+    const colors = {info:'var(--accent2)',warn:'var(--yellow)',error:'var(--red)'};
+    const d = document.createElement('div');
+    d.style.cssText = `display:flex;align-items:flex-start;gap:8px;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:7px;font-size:12px`;
+    d.innerHTML = `<span style="color:${colors[n.level]||'var(--text2)'};font-size:10px;margin-top:1px;flex-shrink:0">${n.level==='error'?'✗':n.level==='warn'?'⚠':'ℹ'}</span><span style="flex:1;color:var(--text2)">${n.msg}</span><span style="color:var(--text3);font-size:10px;flex-shrink:0">${timeAgo(n.ts)}</span>`;
+    el.appendChild(d);
+  });
+}
+
+async function clearNotifs() {
+  await fetch('/notifications', {method:'DELETE', headers:AH}).catch(()=>null);
+  fetchNotifications();
+  toast('Notifications cleared','info');
+}
+
+setInterval(()=>{ if (loggedIn) { fetchNotifications(); } }, 15000);
+
+/* ── NODE RESTART 3PROXY ──────────────────────────────── */
+async function restartNodeProxy(nodeId) {
+  const node = nodesData.find(n=>n.id===nodeId);
+  if (!node) return;
+  toast(`Restarting 3proxy on ${node.name}…`, 'info');
+  const r = await fetch(`/nodes/${nodeId}/restart-proxy`, {
+    method: 'POST',
+    headers: AH
+  }).catch(()=>null);
+  if (r?.ok) {
+    const d = await r.json().catch(()=>({}));
+    toast(d.msg || `${node.name} restarted`, 'success');
+    if (notifOpen) fetchNotifications();
+  } else {
+    const e = await r?.json().catch(()=>({}));
+    toast(e?.error || `Failed to restart ${node.name}`, 'error');
+  }
+}
+
+/* ── PORT ROUTE RESTART ───────────────────────────────── */
+async function restartPortRoute(port) {
+  toast(`Restarting port ${port} proxy…`, 'info');
+  const r = await fetch(`/port-routes/${port}/restart`, {
+    method: 'POST',
+    headers: AH
+  }).catch(()=>null);
+  if (r?.ok) {
+    const d = await r.json().catch(()=>({}));
+    toast(d.msg || `Port ${port} restarted`, 'success');
+    fetchPortRoutes();
+  } else {
+    toast(`Failed to restart port ${port}`, 'error');
+  }
+}
+
+/* ── SSH TERMINAL ─────────────────────────────────────── */
+function openTerminal(nodeId) {
+  const tok = btoa(`${VALID_USER}:${VALID_PASS}`);
+  const url = `/terminal?node=${encodeURIComponent(nodeId)}&token=${tok}`;
+  window.open(url, '_blank', 'width=900,height=560,menubar=no,toolbar=no,location=no,status=no');
+}
+
+/* ── INJECT MISSING UI ELEMENTS ─────────────────────────── */
+// Run after DOM loads to inject missing elements if not already in HTML
+
+function injectMissingUI() {
+  // Dashboard auth row — inject after IP auth row if missing
+  if (!document.getElementById('dashAuthPill')) {
+    const ipRow = document.querySelector('.auth-row');
+    if (ipRow) {
+      const dashRow = document.createElement('div');
+      dashRow.className = 'auth-row';
+      dashRow.style.marginTop = '8px';
+      dashRow.innerHTML = `
+        <div>
+          <div class="auth-row-label">Dashboard Password</div>
+          <div class="auth-row-sub" id="dashAuthSub">Enabled — login required</div>
+        </div>
+        <button class="pill on" id="dashAuthPill" onclick="toggleDashAuth()"></button>
+      `;
+      ipRow.parentNode.insertBefore(dashRow, ipRow.nextSibling);
+    }
+  }
+
+  // Notifications bell — inject in topbar if missing
+  if (!document.getElementById('notifBtn')) {
+    const tbRight = document.querySelector('.tb-right');
+    if (tbRight) {
+      const bell = document.createElement('button');
+      bell.id = 'notifBtn';
+      bell.className = 'btn btn-ghost btn-sm';
+      bell.title = 'Notifications';
+      bell.style.position = 'relative';
+      bell.onclick = toggleNotifPanel;
+      bell.innerHTML = '🔔<span id="notifBadge" style="display:none;position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-size:9px;font-weight:900;padding:1px 4px;border-radius:10px">0</span>';
+      // Insert before the theme button
+      const themeBtn = document.getElementById('themeBtn');
+      tbRight.insertBefore(bell, themeBtn);
+    }
+  }
+
+  // Notifications panel — inject before stat grid if missing
+  if (!document.getElementById('notifPanel')) {
+    const statGrid = document.querySelector('.stat-grid');
+    if (statGrid) {
+      const panel = document.createElement('div');
+      panel.id = 'notifPanel';
+      panel.style.display = 'none';
+      panel.style.marginBottom = '14px';
+      panel.innerHTML = `
+        <div class="card" style="margin-bottom:0">
+          <div class="card-hdr">
+            <div><div class="card-title">Notifications</div></div>
+            <div class="card-actions">
+              <button class="btn btn-ghost btn-xs" onclick="clearNotifs()">Clear all</button>
+              <button class="btn btn-ghost btn-xs" onclick="toggleNotifPanel()">✕</button>
+            </div>
+          </div>
+          <div id="notifList" style="display:flex;flex-direction:column;gap:5px;max-height:220px;overflow-y:auto">
+            <div style="color:var(--text3);font-size:13px;text-align:center;padding:14px">No notifications</div>
+          </div>
+        </div>
+      `;
+      statGrid.parentNode.insertBefore(panel, statGrid);
+    }
+  }
+
+  // Hub terminal button — inject in ctrl-grid if missing
+  const ctrlGrid = document.querySelector('.ctrl-grid');
+  if (ctrlGrid && !document.getElementById('hubTermBtn')) {
+    const btn = document.createElement('button');
+    btn.id = 'hubTermBtn';
+    btn.className = 'ctrl-btn';
+    btn.onclick = () => openTerminal('hub');
+    btn.innerHTML = `
+      <div class="ctrl-ico" style="background:rgba(16,185,129,0.12);color:var(--green)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      </div>
+      <div class="ctrl-lbl">Hub Terminal</div>
+      <div class="ctrl-desc">SSH into hub</div>
+    `;
+    ctrlGrid.appendChild(btn);
+  }
+}
+
+// Patch renderNodes to add restart + terminal buttons
+const _origRenderNodes = renderNodes;
+renderNodes = function() {
+  _origRenderNodes();
+  // Add restart + terminal buttons to each node card
+  document.querySelectorAll('#nodesList .nc').forEach(card => {
+    const actions = card.querySelector('.nc-actions');
+    if (!actions) return;
+    const nodeId = card.querySelector('[onclick*="openNodeEdit"]')?.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];
+    if (!nodeId) return;
+    if (actions.querySelector('.node-restart-btn')) return; // already added
+    const restartBtn = document.createElement('button');
+    restartBtn.className = 'btn btn-accent btn-xs node-restart-btn';
+    restartBtn.title = 'Restart 3proxy on node';
+    restartBtn.textContent = '↺';
+    restartBtn.onclick = () => restartNodeProxy(nodeId);
+
+    const termBtn = document.createElement('button');
+    termBtn.className = 'btn btn-success btn-xs';
+    termBtn.title = 'SSH Terminal';
+    termBtn.textContent = '⌨';
+    termBtn.onclick = () => openTerminal(nodeId);
+
+    // Insert before the toggle pill
+    const pill = actions.querySelector('.pill');
+    if (pill) {
+      actions.insertBefore(restartBtn, pill);
+      actions.insertBefore(termBtn, pill);
+    } else {
+      actions.appendChild(restartBtn);
+      actions.appendChild(termBtn);
+    }
+  });
+};
+
+// Patch renderPortRoutes to add restart button
+const _origRenderPortRoutes = renderPortRoutes;
+renderPortRoutes = function(routes) {
+  _origRenderPortRoutes(routes);
+  document.querySelectorAll('#portRoutesList .pr-card').forEach((card, i) => {
+    if (card.querySelector('.pr-restart-btn')) return;
+    const port = routes[i]?.port;
+    if (!port) return;
+    const delBtn = card.querySelector('.btn-danger');
+    const restartBtn = document.createElement('button');
+    restartBtn.className = 'btn btn-accent btn-xs pr-restart-btn';
+    restartBtn.title = 'Restart port proxy';
+    restartBtn.textContent = '↺';
+    restartBtn.onclick = () => restartPortRoute(port);
+    if (delBtn) card.insertBefore(restartBtn, delBtn);
+  });
+};
+
+// Hook into doLogin to load new state
+const _origDoLogin = doLogin;
+doLogin = function(showToast) {
+  _origDoLogin(showToast);
+  loadDashAuthState();
+  setInterval(()=>{ if(loggedIn) fetchNotifications(); }, 30000);
+};
+
+// Init on load
+window.addEventListener('DOMContentLoaded', () => {
+  setTimeout(injectMissingUI, 100);
+});
+// Also run after login renders the dashboard
+setTimeout(injectMissingUI, 1000);
+
 </script>
 </body>
 </html>
