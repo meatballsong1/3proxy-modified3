@@ -698,8 +698,15 @@ wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://localhost');
     const nodeId = url.searchParams.get('node') || 'hub';
     const tok    = url.searchParams.get('token') || '';
-    if (tok !== TOKEN && settings.dashAuthEnabled !== false) {
-        ws.send('\r\n[Unauthorized]\r\n');
+    // Accept base64("user:pass") OR raw "user:pass" OR skip if dash auth disabled
+    const validTok = TOKEN; // Buffer.from("user:pass").toString('base64')
+    const validRaw = `${USER}:${PASS}`;
+    const authed = tok === validTok
+                || tok === validRaw
+                || Buffer.from(tok, 'base64').toString() === validRaw
+                || (settings && settings.dashAuthEnabled === false);
+    if (!authed) {
+        ws.send('\r\n[Unauthorized — check token]\r\n');
         ws.close();
         return;
     }
