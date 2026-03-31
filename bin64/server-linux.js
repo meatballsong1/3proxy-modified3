@@ -79,7 +79,7 @@ function saveJson(f, d) { fs.writeFileSync(f, JSON.stringify(d, null, 2)); }
 let activeConnections = new Set();
 let nodeRegistry      = loadJson(NODES_FILE, {});
 let clientRegistry    = loadJson(CLIENTS_FILE, {});
-let settings          = loadJson(SETTINGS_FILE, { ipAuthEnabled: true, dashAuthEnabled: true });
+let settings          = loadJson(SETTINGS_FILE, { ipAuthEnabled: false, dashAuthEnabled: true });
 let hotloop           = loadJson(HOTLOOP_FILE, {
     enabled: false, primaryNode: null, fallbackNode: null,
     primaryWeight: 900, threshold: 50, mode: 'weighted',
@@ -247,8 +247,12 @@ function getActualWhitelist() {
 
 function syncWhitelist(ipLines) {
     let out = [];
-    if (!settings.ipAuthEnabled) out.push('allow *');
-    out.push(...ipLines);
+    // Always allow all if IP auth is disabled
+    if (!settings.ipAuthEnabled) {
+        out.push('allow *');
+    } else {
+        out.push(...ipLines);
+    }
     fs.writeFileSync(WL_FILE, out.join('\n')+'\n');
     softRestartProxy();
 }
@@ -800,6 +804,16 @@ term.onData(d => ws.readyState === 1 && ws.send(d));
 });
 
 app.listen = undefined; // replaced by httpServer.listen below
+
+// On startup, sync whitelist to match current auth setting
+(function initWhitelist() {
+    try {
+        if (!settings.ipAuthEnabled) {
+            fs.writeFileSync(WL_FILE, 'allow *\n');
+            notify('info', 'IP auth DISABLED — allow * written to whitelist.cfg');
+        }
+    } catch(e) { console.warn('initWhitelist:', e.message); }
+})();
 
 httpServer.listen(PORT, '0.0.0.0', () => {    console.log(`ProxyHub dashboard → http://localhost:${PORT}`);
     console.log(`3proxy binary: ${PROXY_EXE}`);
