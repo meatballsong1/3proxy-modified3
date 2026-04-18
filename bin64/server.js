@@ -1155,7 +1155,7 @@ app.get('/nodes/:id/speedtest', (req, res) => {
     });
     proxyReq.end();
 });
-// hi
+
 app.post('/nodes/:id/speedtest/upload', (req, res) => {
     const node = nodeRegistry[req.params.id];
     if (!node?.tailscaleIp) return res.status(404).send('Node not found');
