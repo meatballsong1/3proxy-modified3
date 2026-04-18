@@ -221,6 +221,20 @@
   </div>
 
   <div class="card">
+    <h2>Port mapping</h2>
+    <div class="field-hint" style="margin-bottom: 14px;">
+      Route specific ports on the hub to individual nodes. Clients connecting to <code>vpn.oofbomb.xyz:1081</code> will use only that node.
+      Port <code>1080</code> is reserved for load-balancing.
+    </div>
+
+    <div id="portMappings"></div>
+
+    <div class="actions" style="justify-content: flex-start; margin-top: 12px;">
+      <button class="btn-secondary" id="addPortBtn">+ Add port mapping</button>
+    </div>
+  </div>
+
+  <div class="card">
     <h2>Auto-switch rules</h2>
     <div class="field-hint" style="margin-bottom: 14px;">
       When the <strong>Auto-switch</strong> profile is active, matching URLs use the chosen profile. Non-matching URLs fall back to the default.

@@ -216,9 +216,88 @@ async function checkHubConnection() {
     if (r.ok) {
         statusEl.classList.add('connected');
         textEl.textContent = `✓ connected · ${r.latencyMs}ms`;
+        fetchNotifications(); // Also fetch notifications when connected
     } else {
         statusEl.classList.add('error');
         textEl.textContent = r.error || 'unreachable';
+    }
+}
+
+async function fetchNotifications() {
+    try {
+        const authHeader = 'Basic ' + btoa('oofbomb:malaop0989');
+        const r = await fetch(`${state.hubApi}/notifications`, {
+            headers: { Authorization: authHeader }
+        });
+        if (!r.ok) return;
+        const data = await r.json();
+        const notifs = data.notifications || [];
+        
+        // Update badge
+        const errors = notifs.filter(n => n.level === 'error' || n.level === 'warn');
+        const badge = $('notifBadge');
+        if (errors.length > 0) {
+            badge.textContent = errors.length;
+            badge.style.display = '';
+        } else {
+            badge.style.display = 'none';
+        }
+        
+        // Store for display
+        state.notifications = notifs;
+    } catch (e) {
+        console.warn('Failed to fetch notifications:', e);
+    }
+}
+
+function toggleNotifs() {
+    const panel = $('notifPanel');
+    const isOpen = panel.style.display !== 'none';
+    panel.style.display = isOpen ? 'none' : 'block';
+    if (!isOpen) renderNotifications();
+}
+
+function renderNotifications() {
+    const list = $('notifList');
+    const notifs = state.notifications || [];
+    
+    if (!notifs.length) {
+        list.innerHTML = '<div style="color:var(--text-muted);font-size:12px;text-align:center;padding:20px;">No notifications</div>';
+        return;
+    }
+    
+    const colors = { info: 'var(--accent)', warn: 'var(--warning)', error: 'var(--danger)' };
+    const icons = { info: 'ℹ', warn: '⚠', error: '✗' };
+    
+    list.innerHTML = notifs.map(n => {
+        const time = timeAgo(n.ts);
+        return `
+            <div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:8px 10px;margin-bottom:6px;font-size:12px;">
+                <div style="display:flex;align-items:start;gap:8px;">
+                    <span style="color:${colors[n.level]};font-size:14px;margin-top:1px;">${icons[n.level]}</span>
+                    <div style="flex:1;">
+                        <div style="color:var(--text);">${escapeHtml(n.msg)}</div>
+                        <div style="color:var(--text-muted);font-size:10px;margin-top:3px;">${time}</div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+async function clearNotifs() {
+    try {
+        const authHeader = 'Basic ' + btoa('oofbomb:malaop0989');
+        await fetch(`${state.hubApi}/notifications`, {
+            method: 'DELETE',
+            headers: { Authorization: authHeader }
+        });
+        state.notifications = [];
+        $('notifBadge').style.display = 'none';
+        renderNotifications();
+        toast('Notifications cleared');
+    } catch (e) {
+        toast('Failed to clear');
     }
 }
 
@@ -273,14 +352,19 @@ function renderAll() {
         return;
     }
     state = r.state;
+    state.notifications = [];
     renderAll();
 
     if (!state.lastFetch || Date.now() - state.lastFetch > 30000) {
         refreshNodes();
     }
 
+    // Fetch notifications every 15 seconds
+    setInterval(fetchNotifications, 15000);
+
     $('powerBtn').addEventListener('click', togglePower);
     $('refreshBtn').addEventListener('click', refreshNodes);
+    $('notifBtn').addEventListener('click', toggleNotifs);
     $('optionsBtn').addEventListener('click', () => {
         chrome.runtime.openOptionsPage();
     });

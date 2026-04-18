@@ -56,6 +56,7 @@ async function refreshNodes() {
         const res = await fetch(`${hubApi.replace(/\/$/, '')}/ext/nodes`, { cache: 'no-store' });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
+        console.log('[ProxyHub] Raw node data:', data.nodes);
         const nodes = (data.nodes || []).map(n => ({
             id:            n.id,
             name:          n.name,
@@ -67,6 +68,7 @@ async function refreshNodes() {
             assignedPort:  n.assignedPort || null,
             reason:        n.maintenanceReason || n.offlineReason || null,
         }));
+        console.log('[ProxyHub] Mapped nodes:', nodes);
         await store.set({ nodes, lastFetch: Date.now() });
         return { ok: true, nodes };
     } catch (e) {

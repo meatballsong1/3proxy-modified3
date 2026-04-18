@@ -802,6 +802,79 @@ app.get('/agent/token', (req, res) => {
     res.type('text/plain').send(HUB_TOKEN_VALUE);
 });
 
+// ─── PORT HEALTH MONITORING ──────────────────────────────────────────────────
+// Periodically checks if required ports are actually listening.
+// Adds notifications when ports that should be open are closed.
+
+async function checkPortListening(port) {
+    return new Promise(resolve => {
+        const sock = new net.Socket();
+        const timeout = setTimeout(() => {
+            sock.destroy();
+            resolve(false);
+        }, 1000);
+
+        sock.on('connect', () => {
+            clearTimeout(timeout);
+            sock.end();
+            resolve(true);
+        });
+
+        sock.on('error', () => {
+            clearTimeout(timeout);
+            resolve(false);
+        });
+
+        sock.connect(port, '127.0.0.1');
+    });
+}
+
+let lastPortHealthCheck = {};
+
+async function checkPortHealth() {
+    const expectedPorts = new Set();
+    
+    // Port 1080 should always be listening (main SOCKS5)
+    expectedPorts.add(1080);
+    
+    // Port 3128 should be listening (HTTP proxy)
+    expectedPorts.add(3128);
+    
+    // All configured port routes should be listening
+    Object.keys(portRoutes).forEach(port => expectedPorts.add(parseInt(port, 10)));
+    
+    for (const port of expectedPorts) {
+        const isListening = await checkPortListening(port);
+        const wasDown = lastPortHealthCheck[port] === false;
+        const isNowDown = !isListening;
+        
+        // Only notify on state changes to avoid spam
+        if (isNowDown && !wasDown) {
+            const portDesc = port === 1080 ? 'Main proxy (1080)' 
+                           : port === 3128 ? 'HTTP proxy (3128)'
+                           : `Port ${port}`;
+            const nodeInfo = portRoutes[port] 
+                ? ` → ${nodeRegistry[portRoutes[port]]?.name || portRoutes[port]}`
+                : '';
+            addNotif('error', `${portDesc}${nodeInfo} is not listening`);
+            console.error(`[PortHealth] ${portDesc}${nodeInfo} DOWN`);
+        } else if (isListening && wasDown) {
+            const portDesc = port === 1080 ? 'Main proxy (1080)' 
+                           : port === 3128 ? 'HTTP proxy (3128)'
+                           : `Port ${port}`;
+            addNotif('info', `${portDesc} is back online`);
+            console.log(`[PortHealth] ${portDesc} UP`);
+        }
+        
+        lastPortHealthCheck[port] = isListening;
+    }
+}
+
+// Run health check every 30 seconds
+setInterval(checkPortHealth, 30000);
+// Run first check after 5 seconds (let 3proxy start first)
+setTimeout(checkPortHealth, 5000);
+
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
 app.get('/notifications', (req, res) => {
     res.json({ notifications });
