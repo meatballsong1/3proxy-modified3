@@ -55,9 +55,17 @@ function renderStatus() {
     const dot = $('statusDot');
     const val = $('statusValue');
     const meta = $('statusMeta');
+    const powerBtn = $('powerBtn');
     const p = state.activeProfile;
 
     dot.className = 'status-dot';
+    powerBtn.className = 'power-btn';
+
+    const isActive = p !== 'direct' && p !== 'system';
+
+    if (isActive) {
+        powerBtn.classList.add('on');
+    }
 
     if (p === 'direct') {
         val.textContent = 'Direct';
@@ -85,6 +93,19 @@ function renderStatus() {
             val.textContent = 'Unknown node';
             meta.textContent = '';
         }
+    }
+}
+
+async function togglePower() {
+    const isActive = state.activeProfile !== 'direct' && state.activeProfile !== 'system';
+    
+    if (isActive) {
+        // Turn off - go to direct
+        await pickProfile('direct');
+    } else {
+        // Turn on - go to last used profile or auto
+        const lastProfile = state.lastActiveProfile || 'auto';
+        await pickProfile(lastProfile);
     }
 }
 
@@ -193,6 +214,13 @@ async function pickProfile(id) {
         if (id !== 'direct') id = 'direct';
         else return;
     }
+    
+    // Save last active profile (for power button memory)
+    if (id !== 'direct' && id !== 'system') {
+        await send({ type: 'SAVE_SETTINGS', patch: { lastActiveProfile: id } });
+        state.lastActiveProfile = id;
+    }
+    
     const r = await send({ type: 'SET_PROFILE', profile: id });
     if (!r.ok) return toast('Failed: ' + (r.error || 'unknown'));
     state.activeProfile = id;
@@ -238,6 +266,7 @@ function renderAll() {
         refreshNodes();
     }
 
+    $('powerBtn').addEventListener('click', togglePower);
     $('refreshBtn').addEventListener('click', refreshNodes);
     $('optionsBtn').addEventListener('click', () => {
         chrome.runtime.openOptionsPage();

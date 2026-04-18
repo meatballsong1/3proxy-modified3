@@ -743,6 +743,43 @@ app.post('/nodes/:id/reboot', async (req, res) => {
     res.status(out.status).json(out.body);
 });
 
+// Test if the proxy works by fetching a URL through the node
+app.get('/nodes/:id/fetch-test', async (req, res) => {
+    const r = resolveNodeIp(req.params.id);
+    if (r.err) return res.status(r.status).json({ error: r.err });
+    
+    const targetUrl = req.query.url || 'http://api.ipify.org?format=json';
+    const node = r.node;
+    
+    // Use curl with SOCKS5 proxy to test the connection
+    const cmd = `curl -x socks5://${node.tailscaleIp}:1080 -m 10 -s "${targetUrl}"`;
+    
+    exec(cmd, { timeout: 12000 }, (err, stdout, stderr) => {
+        if (err) {
+            return res.status(500).json({
+                ok: false,
+                error: 'Fetch failed',
+                detail: stderr || err.message,
+                node: node.name,
+                nodeIp: node.tailscaleIp,
+                targetUrl,
+            });
+        }
+        
+        let parsed = stdout;
+        try { parsed = JSON.parse(stdout); } catch {}
+        
+        res.json({
+            ok: true,
+            node: node.name,
+            nodeIp: node.tailscaleIp,
+            targetUrl,
+            response: parsed,
+            exitIp: parsed.ip || null,
+        });
+    });
+});
+
 // Bulk: restart 3proxy on every node in parallel
 app.post('/nodes/restart-all-proxies', async (req, res) => {
     const results = {};
