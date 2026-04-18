@@ -77,6 +77,35 @@
     color: var(--text-muted);
     margin-top: 1px;
   }
+  .hub-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .hub-status-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex: none;
+  }
+  .hub-status.connected {
+    color: var(--success);
+  }
+  .hub-status.connected .hub-status-dot {
+    background: var(--success);
+    box-shadow: 0 0 0 2px rgba(16,185,129,.2);
+  }
+  .hub-status.error {
+    color: var(--danger);
+  }
+  .hub-status.error .hub-status-dot {
+    background: var(--danger);
+  }
   .icon-btn {
     width: 30px; height: 30px;
     border: none; background: transparent;
@@ -309,7 +338,11 @@
   </div>
   <div class="header-text">
     <h1>ProxyHub</h1>
-    <div class="header-sub" id="hubHost">hub.oofbomb.xyz</div>
+    <div class="header-sub" id="hubHost">vpn.oofbomb.xyz</div>
+    <div class="hub-status" id="hubStatus">
+      <span class="hub-status-dot"></span>
+      <span class="hub-status-text">checking...</span>
+    </div>
   </div>
   <button class="icon-btn" id="refreshBtn" title="Refresh nodes">
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

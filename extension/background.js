@@ -1,19 +1,19 @@
 // ============================================================================
 //  ProxyHub  ·  background.js (MV3 service worker)
 // ----------------------------------------------------------------------------
-//  Routes traffic through hub.oofbomb.xyz. The hub chains to Tailscale nodes
+//  Routes traffic through vpn.oofbomb.xyz. The hub chains to Tailscale nodes
 //  via `parent socks5` — clients never dial Tailscale IPs directly.
 //
 //  Profiles:
 //    direct       → no proxy
-//    auto         → hub.oofbomb.xyz:1080 (load-balanced across all nodes)
-//    node_<id>    → hub.oofbomb.xyz:<assignedPort>  (one specific node)
+//    auto         → vpn.oofbomb.xyz:1080 (load-balanced across all nodes)
+//    node_<id>    → vpn.oofbomb.xyz:<assignedPort>  (one specific node)
 //    auto_switch  → PAC script with URL rules → profile
 // ============================================================================
 
 const DEFAULTS = {
-    hubApi:        'https://hub.oofbomb.xyz',  // Dashboard API base
-    proxyHost:     'hub.oofbomb.xyz',          // Host in the browser's SOCKS5 config
+    hubApi:        'https://vpn.oofbomb.xyz',  // Dashboard API base
+    proxyHost:     'vpn.oofbomb.xyz',          // Host in the browser's SOCKS5 config
     defaultPort:   1080,                       // Load-balanced port on the hub
     activeProfile: 'direct',                   // Current profile id
     bypassList:    ['<local>', 'localhost', '127.0.0.1/8', '::1', '192.168.0.0/16', '10.0.0.0/8'],

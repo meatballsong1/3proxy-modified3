@@ -128,14 +128,14 @@ async function reset() {
     await chrome.storage.local.clear();
     window.location.reload();
 }
-//  dd
+
 (async function init() {
     const r = await send({ type: 'GET_STATE' });
     if (!r.ok) { toast('Failed to load state'); return; }
     state = r.state;
 
-    $('hubApi').value      = state.hubApi      || 'https://hub.oofbomb.xyz';
-    $('proxyHost').value   = state.proxyHost   || 'hub.oofbomb.xyz';
+    $('hubApi').value      = state.hubApi      || 'https://vpn.oofbomb.xyz';
+    $('proxyHost').value   = state.proxyHost   || 'vpn.oofbomb.xyz';
     $('defaultPort').value = state.defaultPort || 1080;
     $('bypassList').value  = (state.bypassList || []).join('\n');
     rules                  = JSON.parse(JSON.stringify(state.autoSwitch?.rules || []));

@@ -1,11 +1,8 @@
-// ============================================================================
-//  ProxyHub  ·  popup.js
-// ============================================================================
+// ProxyHub  ·  popup.js
 
 const $  = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
-// SVGs for profile icons
 const ICONS = {
     direct: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
     auto:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
@@ -15,7 +12,6 @@ const ICONS = {
 
 let state = null;
 
-// ── messaging helpers ──────────────────────────────────────────────────────
 function send(msg) {
     return new Promise((resolve) => {
         chrome.runtime.sendMessage(msg, (resp) => {
@@ -49,7 +45,12 @@ function pingClass(ms) {
     return 'ping-bad';
 }
 
-// ── rendering ──────────────────────────────────────────────────────────────
+function escapeHtml(s) {
+    return (s == null ? '' : String(s))
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 function renderStatus() {
     const dot = $('statusDot');
     const val = $('statusValue');
@@ -122,7 +123,6 @@ function renderNodes() {
 
     list.innerHTML = '';
 
-    // Sort: online first, then by latency
     const sorted = [...nodes].sort((a, b) => {
         if (a.online !== b.online) return a.online ? -1 : 1;
         if (a.latencyMs == null) return 1;
@@ -136,7 +136,6 @@ function renderNodes() {
         const canUse = n.enabled && !n.maintenance;
 
         const item = el('div', 'item' + (active ? ' active' : '') + (canUse ? '' : ' disabled'));
-        const port = n.assignedPort || state.defaultPort;
         const portNote = n.assignedPort
             ? `:${n.assignedPort}`
             : `:${state.defaultPort} (shared)`;
@@ -168,18 +167,29 @@ function renderFooter() {
         ? `Updated ${timeAgo(state.lastFetch)}`
         : 'Never updated';
     $('hubHost').textContent = (state.hubApi || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+    checkHubConnection();
 }
 
-function escapeHtml(s) {
-    return (s == null ? '' : String(s))
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+async function checkHubConnection() {
+    const statusEl = $('hubStatus');
+    const textEl = statusEl?.querySelector('.hub-status-text');
+    if (!statusEl || !textEl) return;
+
+    statusEl.className = 'hub-status';
+    textEl.textContent = 'checking...';
+
+    const r = await send({ type: 'PING_HUB' });
+    if (r.ok) {
+        statusEl.classList.add('connected');
+        textEl.textContent = `✓ connected · ${r.latencyMs}ms`;
+    } else {
+        statusEl.classList.add('error');
+        textEl.textContent = r.error || 'unreachable';
+    }
 }
 
-// ── actions ────────────────────────────────────────────────────────────────
 async function pickProfile(id) {
     if (state.activeProfile === id) {
-        // Toggle off to direct if tapping the active profile (except direct itself)
         if (id !== 'direct') id = 'direct';
         else return;
     }
@@ -196,7 +206,6 @@ async function refreshNodes() {
     btn.style.transition = 'all .4s';
 
     const r = await send({ type: 'REFRESH_NODES' });
-    // re-pull state so lastFetch & nodes are fresh
     const s = await send({ type: 'GET_STATE' });
     if (s.ok) state = s.state;
 
@@ -216,7 +225,6 @@ function renderAll() {
     renderFooter();
 }
 
-// ── init ───────────────────────────────────────────────────────────────────
 (async function init() {
     const r = await send({ type: 'GET_STATE' });
     if (!r.ok) {
@@ -226,7 +234,6 @@ function renderAll() {
     state = r.state;
     renderAll();
 
-    // Auto-refresh nodes if last fetch was > 30s ago
     if (!state.lastFetch || Date.now() - state.lastFetch > 30000) {
         refreshNodes();
     }
