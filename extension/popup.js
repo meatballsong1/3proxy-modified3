@@ -162,15 +162,28 @@ function renderNodes() {
             : `:${state.defaultPort} (shared)`;
 
         let badge = '';
-        if (n.maintenance)      badge = `<span class="badge badge-maint">Maint</span>`;
-        else if (!n.enabled)    badge = `<span class="badge badge-off">Off</span>`;
-        else if (!n.online)     badge = `<span class="badge badge-off">Down</span>`;
+        let tooltip = '';
+        
+        if (n.maintenance) {
+            badge = `<span class="badge badge-maint">Maintenance</span>`;
+            if (n.reason) {
+                tooltip = `<div class="node-tooltip">${escapeHtml(n.reason)}</div>`;
+            }
+        } else if (!n.enabled) {
+            badge = `<span class="badge badge-off">Offline</span>`;
+            if (n.reason) {
+                tooltip = `<div class="node-tooltip">${escapeHtml(n.reason)}</div>`;
+            }
+        } else if (!n.online) {
+            badge = `<span class="badge badge-off">Down</span>`;
+        }
 
         const pingHtml = n.latencyMs != null
             ? `<span class="item-ping ${pingClass(n.latencyMs)}"><span class="ping-dot"></span>${n.latencyMs}ms</span>`
             : (canUse ? `<span class="item-ping"><span class="ping-dot"></span>—</span>` : '');
 
         item.innerHTML = `
+            ${tooltip}
             <div class="item-icon">${ICONS.node}</div>
             <div class="item-main">
                 <div class="item-name">${escapeHtml(n.name)}${badge}</div>

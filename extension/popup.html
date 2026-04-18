@@ -258,6 +258,7 @@
     cursor: pointer;
     transition: background .12s;
     border-bottom: 1px solid var(--border-soft);
+    position: relative;
   }
   .item:last-child { border-bottom: none; }
   .item:hover { background: var(--border-soft); }
@@ -322,6 +323,36 @@
   }
   .badge-maint { background: var(--warning-soft); color: var(--warning); }
   .badge-off   { background: var(--danger-soft);  color: var(--danger); }
+
+  .node-tooltip {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--text);
+    color: var(--card);
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 11px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+    z-index: 1000;
+    box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  }
+  .node-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--text);
+  }
+  .item:hover .node-tooltip {
+    opacity: 1;
+  }
 
   .footer {
     margin-top: 12px;
