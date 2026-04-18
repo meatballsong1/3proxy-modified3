@@ -1,272 +1,363 @@
-// ============================================================================
-//  ProxyHub  ·  background.js (MV3 service worker)
-// ----------------------------------------------------------------------------
-//  Routes traffic through hub.oofbomb.xyz. The hub chains to Tailscale nodes
-//  via `parent socks5` — clients never dial Tailscale IPs directly.
-//
-//  Profiles:
-//    direct       → no proxy
-//    auto         → hub.oofbomb.xyz:1080 (load-balanced across all nodes)
-//    node_<id>    → hub.oofbomb.xyz:<assignedPort>  (one specific node)
-//    auto_switch  → PAC script with URL rules → profile
-// ============================================================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ProxyHub</title>
+<style>
+  :root {
+    --bg:            #f5f3ff;
+    --bg-2:          #ede9fe;
+    --card:          #ffffff;
+    --text:          #1e1b4b;
+    --text-muted:    #64748b;
+    --border:        #e2e8f0;
+    --border-soft:   #f1f5f9;
+    --accent:        #6366f1;
+    --accent-2:      #8b5cf6;
+    --success:       #10b981;
+    --success-soft:  #d1fae5;
+    --danger:        #ef4444;
+    --danger-soft:   #fee2e2;
+    --warning:       #f59e0b;
+    --warning-soft:  #fef3c7;
+    --shadow:        0 2px 8px rgba(99,102,241,.08), 0 1px 3px rgba(0,0,0,.04);
+    --shadow-lg:     0 10px 30px rgba(99,102,241,.15), 0 4px 10px rgba(0,0,0,.06);
+    --radius:        12px;
+  }
 
-const DEFAULTS = {
-    hubApi:        'https://hub.oofbomb.xyz',  // Dashboard API base
-    proxyHost:     'hub.oofbomb.xyz',          // Host in the browser's SOCKS5 config
-    defaultPort:   1080,                       // Load-balanced port on the hub
-    activeProfile: 'direct',                   // Current profile id
-    bypassList:    ['<local>', 'localhost', '127.0.0.1/8', '::1', '192.168.0.0/16', '10.0.0.0/8'],
-    autoSwitch:    { rules: [], fallback: 'auto' },
-    nodes:         [],
-    lastFetch:     0,
-};
-
-const store = {
-    get:    (keys)       => new Promise(r => chrome.storage.local.get(keys, r)),
-    set:    (obj)        => new Promise(r => chrome.storage.local.set(obj, r)),
-    remove: (key)        => new Promise(r => chrome.storage.local.remove(key, r)),
-};
-
-async function getState() {
-    const s = await store.get(Object.keys(DEFAULTS));
-    return { ...DEFAULTS, ...s };
-}
-
-chrome.runtime.onInstalled.addListener(async () => {
-    const existing = await store.get(Object.keys(DEFAULTS));
-    const patch = {};
-    for (const k of Object.keys(DEFAULTS)) if (existing[k] === undefined) patch[k] = DEFAULTS[k];
-    if (Object.keys(patch).length) await store.set(patch);
-    await refreshNodes();
-    await applyActiveProfile();
-});
-
-chrome.runtime.onStartup.addListener(async () => {
-    await refreshNodes();
-    await applyActiveProfile();
-});
-
-chrome.alarms?.create?.('refresh-nodes', { periodInMinutes: 1 });
-chrome.alarms?.onAlarm.addListener(a => { if (a.name === 'refresh-nodes') refreshNodes(); });
-
-async function refreshNodes() {
-    const { hubApi } = await getState();
-    try {
-        const res = await fetch(`${hubApi.replace(/\/$/, '')}/ext/nodes`, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const nodes = (data.nodes || []).map(n => ({
-            id:            n.id,
-            name:          n.name,
-            region:        n.region,
-            enabled:       n.enabled !== false,
-            online:        n.online === true,
-            maintenance:   n.maintenance === true,
-            latencyMs:     n.latencyMs ?? null,
-            assignedPort:  n.assignedPort || null,
-            reason:        n.maintenanceReason || n.offlineReason || null,
-        }));
-        await store.set({ nodes, lastFetch: Date.now() });
-        return { ok: true, nodes };
-    } catch (e) {
-        console.warn('[ProxyHub] node refresh failed:', e.message);
-        return { ok: false, error: e.message };
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:          #0f0f1e;
+      --bg-2:        #1a1a2e;
+      --card:        #1e1e2e;
+      --text:        #e2e8f0;
+      --text-muted:  #94a3b8;
+      --border:      #2d2d44;
+      --border-soft: #252540;
+      --success-soft:#064e3b;
+      --danger-soft: #7f1d1d;
+      --warning-soft:#78350f;
     }
-}
+  }
 
-function cidrMask(cidr) {
-    const bits = parseInt(cidr.split('/')[1], 10);
-    const mask = 0xffffffff << (32 - bits) >>> 0;
-    return [mask>>>24, mask>>>16 & 255, mask>>>8 & 255, mask & 255].join('.');
-}
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 360px;
+    min-height: 480px;
+    background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', system-ui, sans-serif;
+    font-size: 13.5px;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { padding: 14px; }
 
-function bypassPac(list) {
-    return list.map(p => {
-        if (p === '<local>')     return `isPlainHostName(host)`;
-        if (p.includes('/'))     return `isInNet(host, "${p.split('/')[0]}", "${cidrMask(p)}")`;
-        if (p.includes('*'))     return `shExpMatch(host, "${p}")`;
-        return `dnsDomainIs(host, "${p.startsWith('.') ? p : '.'+p}") || host === "${p}"`;
-    }).join(' || ');
-}
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 2px 14px;
+  }
+  .logo {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    color: white;
+    box-shadow: 0 4px 12px rgba(99,102,241,.35);
+  }
+  .header-text { flex: 1; min-width: 0; }
+  .header h1 {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+  .header-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+  .icon-btn {
+    width: 30px; height: 30px;
+    border: none; background: transparent;
+    color: var(--text-muted);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .15s;
+  }
+  .icon-btn:hover { background: var(--border-soft); color: var(--text); }
 
-async function applyActiveProfile() {
-    const s = await getState();
-    const profile = s.activeProfile || 'direct';
+  .status {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    position: relative;
+    overflow: hidden;
+  }
+  .status-row {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .status-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex: none;
+    box-shadow: 0 0 0 3px var(--border-soft);
+    transition: all .25s;
+  }
+  .status-dot.on {
+    background: var(--success);
+    box-shadow: 0 0 0 3px var(--success-soft);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  .status-dot.pac {
+    background: var(--accent-2);
+    box-shadow: 0 0 0 3px rgba(139,92,246,.2);
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 3px var(--success-soft); }
+    50%      { box-shadow: 0 0 0 6px rgba(16,185,129,.15); }
+  }
+  .status-main {
+    flex: 1; min-width: 0;
+  }
+  .status-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-weight: 600;
+  }
+  .status-value {
+    font-size: 14px;
+    font-weight: 600;
+    margin-top: 2px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .status-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 2px;
+    font-variant-numeric: tabular-nums;
+  }
 
-    if (profile === 'direct') {
-        await setChromeProxy({ mode: 'direct' });
-        await setBadge('', '#6366f1');
-        notify('Proxy off', 'Direct connection — no proxy');
-        return;
-    }
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 2px 6px;
+  }
+  .section-title {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .text-btn {
+    font-size: 11px;
+    color: var(--accent);
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .text-btn:hover { background: var(--border-soft); }
 
-    if (profile === 'system') {
-        await setChromeProxy({ mode: 'system' });
-        await setBadge('SYS', '#64748b');
-        return;
-    }
+  .list {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    cursor: pointer;
+    transition: background .12s;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .item:last-child { border-bottom: none; }
+  .item:hover { background: var(--border-soft); }
+  .item.active {
+    background: linear-gradient(90deg, rgba(99,102,241,.08), rgba(139,92,246,.08));
+  }
+  .item.active .item-name { color: var(--accent); }
+  .item.disabled { opacity: 0.55; cursor: not-allowed; }
+  .item.disabled:hover { background: transparent; }
 
-    if (profile === 'auto') {
-        await setFixedSocks5(s.proxyHost, s.defaultPort, s.bypassList);
-        await setBadge('ON', '#10b981');
-        notify('ProxyHub connected', `Auto — ${s.proxyHost}:${s.defaultPort}`);
-        return;
-    }
+  .item-icon {
+    width: 28px; height: 28px;
+    border-radius: 8px;
+    flex: none;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--border-soft);
+    color: var(--text-muted);
+  }
+  .item.active .item-icon {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: white;
+  }
+  .item-main { flex: 1; min-width: 0; }
+  .item-name {
+    font-weight: 500;
+    font-size: 13px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .item-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .item-ping {
+    font-size: 11px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    flex: none;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .ping-dot {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--text-muted);
+  }
+  .ping-good  { color: var(--success); }
+  .ping-good  .ping-dot { background: var(--success); }
+  .ping-ok    { color: var(--warning); }
+  .ping-ok    .ping-dot { background: var(--warning); }
+  .ping-bad   { color: var(--danger); }
+  .ping-bad   .ping-dot { background: var(--danger); }
 
-    if (profile === 'auto_switch') {
-        await setPacScript(buildAutoSwitchPac(s));
-        await setBadge('AS', '#8b5cf6');
-        notify('ProxyHub connected', 'Auto-switch active');
-        return;
-    }
+  .badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .badge-maint { background: var(--warning-soft); color: var(--warning); }
+  .badge-off   { background: var(--danger-soft);  color: var(--danger); }
 
-    if (profile.startsWith('node_')) {
-        const node = (s.nodes || []).find(n => n.id === profile);
-        if (!node) {
-            console.warn('[ProxyHub] unknown node profile, falling back to auto');
-            await store.set({ activeProfile: 'auto' });
-            return applyActiveProfile();
-        }
-        const port = node.assignedPort || s.defaultPort;
-        await setFixedSocks5(s.proxyHost, port, s.bypassList);
-        await setBadge('ON', '#10b981');
-        notify('ProxyHub connected', `${node.name} — ${s.proxyHost}:${port}`);
-        return;
-    }
-}
+  .footer {
+    margin-top: 12px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .footer-info {
+    font-size: 10.5px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
 
-function setChromeProxy(config) {
-    return new Promise((resolve, reject) => {
-        chrome.proxy.settings.set(
-            { value: config, scope: 'regular' },
-            () => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve()
-        );
-    });
-}
+  .toast {
+    position: fixed;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%) translateY(60px);
+    background: var(--text);
+    color: white;
+    font-size: 12px;
+    padding: 8px 14px;
+    border-radius: 20px;
+    box-shadow: var(--shadow-lg);
+    opacity: 0;
+    transition: all .25s cubic-bezier(.4,0,.2,1);
+    pointer-events: none;
+    white-space: nowrap;
+    max-width: 320px;
+    overflow: hidden; text-overflow: ellipsis;
+  }
+  .toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 
-function setFixedSocks5(host, port, bypassList) {
-    return setChromeProxy({
-        mode: 'fixed_servers',
-        rules: {
-            singleProxy: { scheme: 'socks5', host, port: parseInt(port, 10) },
-            bypassList,
-        },
-    });
-}
+  .skeleton {
+    background: linear-gradient(90deg, var(--border-soft) 0%, var(--border) 50%, var(--border-soft) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s ease-in-out infinite;
+    border-radius: 4px;
+  }
+  @keyframes shimmer {
+    0%   { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+</style>
+</head>
+<body>
 
-function setPacScript(pac) {
-    return setChromeProxy({
-        mode: 'pac_script',
-        pacScript: { data: pac, mandatory: false },
-    });
-}
+<div class="header">
+  <div class="logo">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2l3 7h7l-5.5 4.5L18 22l-6-4-6 4 1.5-8.5L2 9h7z"/>
+    </svg>
+  </div>
+  <div class="header-text">
+    <h1>ProxyHub</h1>
+    <div class="header-sub" id="hubHost">hub.oofbomb.xyz</div>
+  </div>
+  <button class="icon-btn" id="refreshBtn" title="Refresh nodes">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+      <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+    </svg>
+  </button>
+  <button class="icon-btn" id="optionsBtn" title="Settings">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+    </svg>
+  </button>
+</div>
 
-function buildAutoSwitchPac(s) {
-    const nodeMap = {};
-    for (const n of s.nodes || []) nodeMap[n.id] = n;
+<div class="status">
+  <div class="status-row">
+    <div class="status-dot" id="statusDot"></div>
+    <div class="status-main">
+      <div class="status-label">Current</div>
+      <div class="status-value" id="statusValue">Direct</div>
+      <div class="status-meta" id="statusMeta"></div>
+    </div>
+  </div>
+</div>
 
-    function profileToProxyString(profId) {
-        if (profId === 'direct') return 'DIRECT';
-        if (profId === 'auto')   return `SOCKS5 ${s.proxyHost}:${s.defaultPort}; DIRECT`;
-        if (profId.startsWith('node_')) {
-            const n = nodeMap[profId];
-            const port = (n && n.assignedPort) ? n.assignedPort : s.defaultPort;
-            return `SOCKS5 ${s.proxyHost}:${port}; DIRECT`;
-        }
-        return 'DIRECT';
-    }
+<div class="section-header">
+  <div class="section-title">Profiles</div>
+</div>
+<div class="list" id="profileList"></div>
 
-    const bypassExpr = bypassPac(s.bypassList || []);
-    const rulesJs = (s.autoSwitch?.rules || []).map(r => {
-        const proxy = profileToProxyString(r.profile);
-        let cond;
-        if (r.match === 'host')       cond = `shExpMatch(host, ${JSON.stringify(r.pattern)})`;
-        else if (r.match === 'url')   cond = `shExpMatch(url,  ${JSON.stringify(r.pattern)})`;
-        else if (r.match === 'regex') cond = `(new RegExp(${JSON.stringify(r.pattern)})).test(url)`;
-        else                          cond = `shExpMatch(host, ${JSON.stringify(r.pattern)})`;
-        return `  if (${cond}) return ${JSON.stringify(proxy)};`;
-    }).join('\n');
+<div class="section-header">
+  <div class="section-title">Nodes</div>
+  <div class="footer-info" id="nodeCount"></div>
+</div>
+<div class="list" id="nodeList">
+  <div class="item disabled"><div class="item-icon skeleton" style="width:28px;height:28px;"></div>
+    <div class="item-main"><div class="skeleton" style="width:120px;height:12px;"></div>
+      <div class="skeleton" style="width:80px;height:10px;margin-top:6px;"></div></div></div>
+</div>
 
-    const fallback = profileToProxyString(s.autoSwitch?.fallback || 'auto');
+<div class="footer">
+  <div class="footer-info" id="lastUpdate">Loading…</div>
+  <button class="text-btn" id="openHubBtn">Open hub ↗</button>
+</div>
 
-    return `
-function FindProxyForURL(url, host) {
-  if (${bypassExpr || 'false'}) return "DIRECT";
-${rulesJs}
-  return ${JSON.stringify(fallback)};
-}`.trim();
-}
+<div class="toast" id="toast"></div>
 
-function setBadge(text, color) {
-    try {
-        chrome.action.setBadgeText({ text: text || '' });
-        if (color) chrome.action.setBadgeBackgroundColor({ color });
-    } catch {}
-    return Promise.resolve();
-}
-
-let lastNotifyAt = 0;
-function notify(title, message) {
-    const now = Date.now();
-    if (now - lastNotifyAt < 2000) return;
-    lastNotifyAt = now;
-    try {
-        chrome.notifications.create({
-            type: 'basic', iconUrl: 'icons/icon48.png',
-            title, message: message || '', priority: 0,
-        });
-    } catch {}
-}
-
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    (async () => {
-        try {
-            switch (msg.type) {
-                case 'GET_STATE': {
-                    const s = await getState();
-                    sendResponse({ ok: true, state: s });
-                    break;
-                }
-                case 'SET_PROFILE': {
-                    await store.set({ activeProfile: msg.profile });
-                    await applyActiveProfile();
-                    sendResponse({ ok: true });
-                    break;
-                }
-                case 'REFRESH_NODES': {
-                    const r = await refreshNodes();
-                    sendResponse(r);
-                    break;
-                }
-                case 'SAVE_SETTINGS': {
-                    await store.set(msg.patch || {});
-                    if (msg.patch?.hubApi) await refreshNodes();
-                    await applyActiveProfile();
-                    sendResponse({ ok: true });
-                    break;
-                }
-                case 'PING_HUB': {
-                    const { hubApi } = await getState();
-                    const t0 = performance.now();
-                    try {
-                        const r = await fetch(`${hubApi.replace(/\/$/, '')}/ext/ping`, { cache: 'no-store' });
-                        sendResponse({ ok: r.ok, latencyMs: Math.round(performance.now() - t0) });
-                    } catch (e) {
-                        sendResponse({ ok: false, error: e.message });
-                    }
-                    break;
-                }
-                default:
-                    sendResponse({ ok: false, error: 'unknown message' });
-            }
-        } catch (e) {
-            sendResponse({ ok: false, error: e.message });
-        }
-    })();
-    return true;
-});
-
-chrome.proxy?.onProxyError?.addListener(details => {
-    console.warn('[ProxyHub] proxy error:', details);
-});
+<script src="popup.js"></script>
+</body>
+</html>
