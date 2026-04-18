@@ -1,302 +1,241 @@
-// popup.js — ProxyHub VPN Extension
+// ============================================================================
+//  ProxyHub  ·  popup.js
+// ============================================================================
 
-const HUB_DEFAULT      = 'http://vpn2.oofbomb.xyz';
-const CONNECT_DELAY_MS = 2800; // ms overlay shown before marking connected
+const $  = id => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
-let vpnState     = { connected: false };
-let nodes        = [];
-let selectedNode = null;
-let hubOnline    = false;
-let pingSmooth   = {}; // { nodeId: { samples:[], avg:null } }
+// SVGs for profile icons
+const ICONS = {
+    direct: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+    auto:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
+    switch: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
+    node:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><circle cx="7" cy="8" r="0.5"/><circle cx="7" cy="17" r="0.5"/></svg>`,
+};
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const store = (op, d) => new Promise(r => op === 'get' ? chrome.storage.local.get(d, r) : chrome.storage.local.set(d, r));
-const msg   = m => new Promise(r => chrome.runtime.sendMessage(m, res => r(res || {})));
-const $     = id => document.getElementById(id);
+let state = null;
 
-// Rolling average — keeps last 4 samples, rejects spikes > 3x current avg
-function smoothPing(nodeId, newMs) {
-    if (newMs == null) return pingSmooth[nodeId]?.avg ?? null;
-    if (!pingSmooth[nodeId]) pingSmooth[nodeId] = { samples: [], avg: null };
-    const s = pingSmooth[nodeId];
-    if (s.avg !== null && newMs > s.avg * 3 && newMs > 200) return s.avg; // spike rejected
-    s.samples.push(newMs);
-    if (s.samples.length > 4) s.samples.shift();
-    s.avg = Math.round(s.samples.reduce((a, b) => a + b, 0) / s.samples.length);
-    return s.avg;
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-async function init() {
-    const data = await store('get', ['vpnState', 'hubUrl', 'availableNodes', 'hubOnline']);
-    $('hubUrlIn').value = data.hubUrl || HUB_DEFAULT;
-    hubOnline = !!data.hubOnline;
-    vpnState  = await msg({ type: 'GET_STATE' });
-    applyVisual(vpnState);
-    if (data.availableNodes?.length) { nodes = data.availableNodes; renderServers(); }
-    doRefresh();
-    if (!vpnState.connected) checkWhitelist();
-}
-
-document.addEventListener('DOMContentLoaded', () => {
-    $('powerBtn').addEventListener('click', toggleConnect);
-    $('hubPill').addEventListener('click', toggleSettings);
-    $('settingsToggleBtn').addEventListener('click', toggleSettings);
-    $('saveHubBtn').addEventListener('click', saveHub);
-    $('refreshBtn').addEventListener('click', doRefresh);
-    $('autoBtn').addEventListener('click', autoSelect);
-    $('hubUrlIn').addEventListener('keydown', e => { if (e.key === 'Enter') saveHub(); });
-    init();
-});
-
-chrome.runtime.onMessage.addListener(m => {
-    switch (m.type) {
-        case 'CONNECTED':
-            vpnState = { connected: true, nodeName: m.node?.name, nodeId: m.node?.id };
-            applyVisual(vpnState); break;
-        case 'DISCONNECTED':
-            vpnState = { connected: false };
-            applyVisual(vpnState); checkWhitelist(); break;
-        case 'NODES_UPDATED':
-            nodes = m.nodes || []; renderServers(); pingAll(); break;
-        case 'HUB_OFFLINE':
-            setHubStatus(false); break;
-    }
-});
-
-// ── Connect / Disconnect ──────────────────────────────────────────────────────
-async function toggleConnect() {
-    if (vpnState.connected) {
-        showOverlay('Disconnecting', 'Clearing proxy settings');
-        await msg({ type: 'DISCONNECT' });
-        hideOverlay();
-    } else {
-        if (!selectedNode) { showErr('No server selected', 'Pick a server from the list below.'); return; }
-        hideErr();
-        await doConnect(selectedNode);
-    }
-}
-
-async function doConnect(node) {
-    showOverlay('Establishing tunnel', 'Routing through ' + node.name);
-    setConnecting();
-
-    const r = await msg({ type: 'CONNECT', node });
-    if (!r.ok) {
-        hideOverlay(); setDisconnected();
-        showErr('Connection Failed', r.error || 'Could not reach node.');
-        return;
-    }
-
-    // Animated progress through the delay
-    const steps = [
-        [500,  'Authenticating node'],
-        [1200, 'Establishing route'],
-        [2000, 'Verifying tunnel'],
-        [CONNECT_DELAY_MS, 'Connected!'],
-    ];
-    await new Promise(res => {
-        let elapsed = 0;
-        const iv = setInterval(() => {
-            elapsed += 80;
-            const step = steps.slice().reverse().find(([t]) => elapsed >= t);
-            if (step) $('connSub').textContent = step[1];
-            if (elapsed >= CONNECT_DELAY_MS) { clearInterval(iv); res(); }
-        }, 80);
+// ── messaging helpers ──────────────────────────────────────────────────────
+function send(msg) {
+    return new Promise((resolve) => {
+        chrome.runtime.sendMessage(msg, (resp) => {
+            if (chrome.runtime.lastError) return resolve({ ok: false, error: chrome.runtime.lastError.message });
+            resolve(resp || { ok: false, error: 'no response' });
+        });
     });
-
-    hideOverlay();
 }
 
-// ── Auto ──────────────────────────────────────────────────────────────────────
-async function autoSelect() {
-    if (!nodes.length) return;
-    await pingAll();
-    let best = null, bestMs = Infinity;
-    nodes.forEach(n => { const ms = pingSmooth[n.id]?.avg; if (ms != null && ms < bestMs) { bestMs = ms; best = n; } });
-    if (!best) { showErr('Auto-select failed', 'No nodes responded to ping.'); return; }
-    selectNode(best);
-    if (!vpnState.connected) await doConnect(best);
+function toast(msg) {
+    const t = $('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => t.classList.remove('show'), 2000);
 }
 
-// ── Ping ──────────────────────────────────────────────────────────────────────
-async function pingAll() {
-    const data = await store('get', ['hubUrl']);
-    const hub  = (data.hubUrl || HUB_DEFAULT).replace(/\/$/, '');
-    await Promise.all(nodes.map(async n => {
-        try {
-            const r = await msg({ type: 'PING_NODE', url: `${hub}/nodes/${n.id}/ping` });
-            smoothPing(n.id, r.latencyMs ?? null);
-        } catch { /* keep existing smooth */ }
-    }));
-    renderServers();
+function timeAgo(ms) {
+    if (!ms) return 'never';
+    const s = Math.floor((Date.now() - ms) / 1000);
+    if (s < 5)   return 'just now';
+    if (s < 60)  return `${s}s ago`;
+    if (s < 3600) return `${Math.floor(s/60)}m ago`;
+    return `${Math.floor(s/3600)}h ago`;
 }
 
-// ── Render ────────────────────────────────────────────────────────────────────
-function renderServers() {
-    const list = $('serverList');
-    if (!nodes.length) {
-        list.innerHTML = `<div class="empty-msg">${hubOnline ? 'No nodes available' : '🔴 Hub offline — check settings'}</div>`;
-        return;
-    }
-    list.innerHTML = '';
-    nodes.forEach((node, i) => {
-        const isSel     = selectedNode?.id === node.id;
-        const isConn    = vpnState.connected && vpnState.nodeId === node.id;
-        const isDisabled = node.enabled === false;
-        const ms        = isDisabled ? null : (pingSmooth[node.id]?.avg ?? null);
-        const { bars, cls, label } = isDisabled ? { bars: 0, cls: 'r', label: '—' } : pingDisplay(ms);
+function pingClass(ms) {
+    if (ms === null || ms === undefined) return '';
+    if (ms < 80)  return 'ping-good';
+    if (ms < 200) return 'ping-ok';
+    return 'ping-bad';
+}
 
-        const card = document.createElement('div');
-        card.className = ['srv-card', isSel && !isDisabled ? 'sel' : '', isConn ? 'active' : '', isDisabled ? 'disabled' : ''].filter(Boolean).join(' ');
-        card.style.animationDelay = (i * 45) + 'ms';
+// ── rendering ──────────────────────────────────────────────────────────────
+function renderStatus() {
+    const dot = $('statusDot');
+    const val = $('statusValue');
+    const meta = $('statusMeta');
+    const p = state.activeProfile;
 
-        const barHTML = [0,1,2,3].map(j =>
-            `<div class="ping-bar ${j < bars ? 'pb-' + cls : ''}"></div>`
-        ).join('');
+    dot.className = 'status-dot';
 
-        const regionLine = node.region || '';
-        const reasonLine = isDisabled && node.offlineReason
-            ? `<div class="srv-reason">⚠ ${node.offlineReason}</div>`
-            : '';
-
-        card.innerHTML = `
-            <div class="srv-dot${isDisabled ? ' dot-off' : ''}"></div>
-            <div class="srv-info">
-                <div class="srv-name${isDisabled ? ' name-off' : ''}">${node.name}${isDisabled ? ' <span class="offline-tag">OFFLINE</span>' : ''}</div>
-                <div class="srv-region">${regionLine}${node.tailscaleIp && !isDisabled ? ' · ' + node.tailscaleIp : ''}</div>
-                ${reasonLine}
-            </div>
-            <div class="ping-wrap">
-                ${isDisabled ? '<span class="ping-ms pm-r">offline</span>' : `<div class="ping-bars">${barHTML}</div><span class="ping-ms${cls ? ' pm-' + cls : ''}">${label}</span>`}
-            </div>
-            ${isDisabled ? '<button class="srv-btn btn-off" disabled>Off</button>' : `<button class="srv-btn">${isConn ? '✓ ON' : isSel ? 'Go' : 'Use'}</button>`}
-        `;
-
-        if (!isDisabled) {
-            card.addEventListener('click', () => selectNode(node));
-            card.querySelector('.srv-btn').addEventListener('click', async e => {
-                e.stopPropagation();
-                selectNode(node);
-                if (vpnState.connected && vpnState.nodeId === node.id) {
-                    showOverlay('Disconnecting', 'Clearing proxy settings');
-                    await msg({ type: 'DISCONNECT' });
-                    hideOverlay();
-                } else {
-                    await doConnect(node);
-                }
-            });
+    if (p === 'direct') {
+        val.textContent = 'Direct';
+        meta.textContent = 'No proxy';
+    } else if (p === 'system') {
+        val.textContent = 'System proxy';
+        meta.textContent = 'Using OS settings';
+    } else if (p === 'auto') {
+        dot.classList.add('on');
+        val.textContent = 'Auto (load-balanced)';
+        meta.textContent = `SOCKS5 ${state.proxyHost}:${state.defaultPort}`;
+    } else if (p === 'auto_switch') {
+        dot.classList.add('pac');
+        val.textContent = 'Auto-switch';
+        const n = (state.autoSwitch?.rules || []).length;
+        meta.textContent = `${n} rule${n===1?'':'s'} · fallback: ${state.autoSwitch?.fallback || 'auto'}`;
+    } else if (p.startsWith('node_')) {
+        dot.classList.add('on');
+        const node = (state.nodes || []).find(n => n.id === p);
+        if (node) {
+            val.textContent = node.name;
+            const port = node.assignedPort || state.defaultPort;
+            meta.textContent = `${node.region || '—'} · SOCKS5 ${state.proxyHost}:${port}`;
+        } else {
+            val.textContent = 'Unknown node';
+            meta.textContent = '';
         }
-
-        list.appendChild(card);
-    });
-}
-
-function pingDisplay(ms) {
-    if (ms == null)  return { bars: 0, cls: '',  label: '—'     };
-    if (ms < 60)     return { bars: 4, cls: 'g', label: ms+'ms' };
-    if (ms < 130)    return { bars: 3, cls: 'g', label: ms+'ms' };
-    if (ms < 260)    return { bars: 2, cls: 'y', label: ms+'ms' };
-    if (ms < 500)    return { bars: 1, cls: 'r', label: ms+'ms' };
-    return                  { bars: 1, cls: 'r', label: '500+'  };
-}
-
-function selectNode(node) {
-    selectedNode = node;
-    $('footerInfo').textContent = '→ ' + node.name;
-    if (!vpnState.connected) $('statusSub').textContent = node.name;
-    renderServers();
-}
-
-// ── Visual states ─────────────────────────────────────────────────────────────
-function applyVisual(s) { s.connected ? setConnected(s.nodeName) : setDisconnected(); }
-
-function setConnected(name) {
-    $('powerBtn').className    = 'power-btn connected';
-    $('orbitLine').className   = 'orbit-line filled';
-    $('orbitDashes').className = 'orbit-dashes';
-    $('statusMain').className  = 'status-main on';
-    $('statusMain').textContent = '● Protected';
-    $('statusSub').textContent  = 'via ' + (name || 'VPN Node');
-    $('powerLbl').textContent   = 'Disconnect';
-    $('logoMark').className = 'logo-mark connected';
-    $('logoEm').className   = 'connected';
-    $('glowA').className    = 'glow glow-a connected';
-    $('glowB').className    = 'glow glow-b connected';
-    vpnState.connected = true;
-    hideErr(); renderServers();
-}
-
-function setDisconnected() {
-    $('powerBtn').className    = 'power-btn';
-    $('orbitLine').className   = 'orbit-line';
-    $('orbitDashes').className = 'orbit-dashes';
-    $('statusMain').className  = 'status-main';
-    $('statusMain').textContent = 'Not Connected';
-    $('statusSub').textContent  = selectedNode ? selectedNode.name : 'Select a server';
-    $('powerLbl').textContent   = 'Connect';
-    $('logoMark').className = 'logo-mark';
-    $('logoEm').className   = '';
-    $('glowA').className    = 'glow glow-a';
-    $('glowB').className    = 'glow glow-b';
-    vpnState.connected = false;
-    renderServers();
-}
-
-function setConnecting() {
-    $('powerBtn').className    = 'power-btn connecting';
-    $('orbitLine').className   = 'orbit-line spinning';
-    $('orbitDashes').className = 'orbit-dashes spinning';
-    $('statusMain').className  = 'status-main conn';
-    $('statusMain').textContent = 'Connecting…';
-    $('powerLbl').textContent   = '…';
-}
-
-// ── Overlay ───────────────────────────────────────────────────────────────────
-function showOverlay(title, sub) {
-    $('connOverlay').querySelector('.conn-msg').innerHTML = title + '<span class="conn-dots"></span>';
-    $('connSub').textContent = sub || '';
-    $('connOverlay').classList.add('show');
-}
-function hideOverlay() { $('connOverlay').classList.remove('show'); }
-
-// ── Hub status ────────────────────────────────────────────────────────────────
-function setHubStatus(online) {
-    hubOnline = online;
-    $('hubDot').className   = 'hub-dot ' + (online ? 'on' : 'off');
-    $('hubTxt').textContent = online ? 'Hub Online' : 'Hub Offline';
-}
-
-// ── Whitelist ─────────────────────────────────────────────────────────────────
-async function checkWhitelist() {
-    if (vpnState.connected) { hideErr(); return; }
-    const r = await msg({ type: 'CHECK_WHITELIST' });
-    if (r.allowed === false) {
-        showErr('Not Whitelisted', `Your IP ${(r.ip||'').replace(/^::ffff:/,'')} isn't on the access list.`);
-    } else if (r.allowed === true) {
-        hideErr(); setHubStatus(true);
     }
 }
 
-function showErr(title, body) { $('errTitle').textContent = title; $('errBody').textContent = body; $('errBanner').classList.add('show'); }
-function hideErr() { $('errBanner').classList.remove('show'); }
+function renderProfiles() {
+    const list = $('profileList');
+    list.innerHTML = '';
 
-function toggleSettings() { $('settingsPanel').classList.toggle('open'); }
-async function saveHub() {
-    const url = $('hubUrlIn').value.trim().replace(/\/$/, '');
-    if (!url) return;
-    await msg({ type: 'SET_HUB', url });
-    $('settingsPanel').classList.remove('open');
-    doRefresh(); checkWhitelist();
+    const profiles = [
+        { id: 'direct',      name: 'Direct',      sub: 'No proxy',           icon: ICONS.direct },
+        { id: 'auto',        name: 'Auto',        sub: 'Load-balanced',      icon: ICONS.auto },
+        { id: 'auto_switch', name: 'Auto-switch', sub: 'URL-based rules',    icon: ICONS.switch },
+    ];
+
+    for (const p of profiles) {
+        const item = el('div', 'item' + (state.activeProfile === p.id ? ' active' : ''));
+        item.innerHTML = `
+            <div class="item-icon">${p.icon}</div>
+            <div class="item-main">
+                <div class="item-name">${p.name}</div>
+                <div class="item-sub">${p.sub}</div>
+            </div>`;
+        item.addEventListener('click', () => pickProfile(p.id));
+        list.appendChild(item);
+    }
 }
 
-async function doRefresh() {
+function renderNodes() {
+    const list = $('nodeList');
+    const nodes = state.nodes || [];
+    $('nodeCount').textContent = nodes.length ? `${nodes.filter(n=>n.online).length}/${nodes.length} online` : '';
+
+    if (!nodes.length) {
+        list.innerHTML = `<div class="item disabled"><div class="item-main"><div class="item-name">No nodes found</div><div class="item-sub">Check hub URL in settings</div></div></div>`;
+        return;
+    }
+
+    list.innerHTML = '';
+
+    // Sort: online first, then by latency
+    const sorted = [...nodes].sort((a, b) => {
+        if (a.online !== b.online) return a.online ? -1 : 1;
+        if (a.latencyMs == null) return 1;
+        if (b.latencyMs == null) return -1;
+        return a.latencyMs - b.latencyMs;
+    });
+
+    for (const n of sorted) {
+        const profId = 'node_' + n.id;
+        const active = state.activeProfile === profId;
+        const canUse = n.enabled && !n.maintenance;
+
+        const item = el('div', 'item' + (active ? ' active' : '') + (canUse ? '' : ' disabled'));
+        const port = n.assignedPort || state.defaultPort;
+        const portNote = n.assignedPort
+            ? `:${n.assignedPort}`
+            : `:${state.defaultPort} (shared)`;
+
+        let badge = '';
+        if (n.maintenance)      badge = `<span class="badge badge-maint">Maint</span>`;
+        else if (!n.enabled)    badge = `<span class="badge badge-off">Off</span>`;
+        else if (!n.online)     badge = `<span class="badge badge-off">Down</span>`;
+
+        const pingHtml = n.latencyMs != null
+            ? `<span class="item-ping ${pingClass(n.latencyMs)}"><span class="ping-dot"></span>${n.latencyMs}ms</span>`
+            : (canUse ? `<span class="item-ping"><span class="ping-dot"></span>—</span>` : '');
+
+        item.innerHTML = `
+            <div class="item-icon">${ICONS.node}</div>
+            <div class="item-main">
+                <div class="item-name">${escapeHtml(n.name)}${badge}</div>
+                <div class="item-sub">${escapeHtml(n.region || '—')} · ${portNote}</div>
+            </div>
+            ${pingHtml}`;
+
+        if (canUse) item.addEventListener('click', () => pickProfile(profId));
+        list.appendChild(item);
+    }
+}
+
+function renderFooter() {
+    $('lastUpdate').textContent = state.lastFetch
+        ? `Updated ${timeAgo(state.lastFetch)}`
+        : 'Never updated';
+    $('hubHost').textContent = (state.hubApi || '').replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+function escapeHtml(s) {
+    return (s == null ? '' : String(s))
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+// ── actions ────────────────────────────────────────────────────────────────
+async function pickProfile(id) {
+    if (state.activeProfile === id) {
+        // Toggle off to direct if tapping the active profile (except direct itself)
+        if (id !== 'direct') id = 'direct';
+        else return;
+    }
+    const r = await send({ type: 'SET_PROFILE', profile: id });
+    if (!r.ok) return toast('Failed: ' + (r.error || 'unknown'));
+    state.activeProfile = id;
+    renderAll();
+}
+
+async function refreshNodes() {
     const btn = $('refreshBtn');
-    btn.classList.add('spinning');
-    const r  = await msg({ type: 'FETCH_NODES' });
-    nodes     = r.nodes || [];
-    hubOnline = nodes.length > 0;
-    renderServers(); setHubStatus(hubOnline);
-    btn.classList.remove('spinning');
-    if (nodes.length) pingAll();
+    btn.style.opacity = 0.5;
+    btn.style.transform = 'rotate(180deg)';
+    btn.style.transition = 'all .4s';
+
+    const r = await send({ type: 'REFRESH_NODES' });
+    // re-pull state so lastFetch & nodes are fresh
+    const s = await send({ type: 'GET_STATE' });
+    if (s.ok) state = s.state;
+
+    btn.style.opacity = '';
+    btn.style.transform = '';
+
+    if (r.ok) toast(`Loaded ${r.nodes?.length || 0} nodes`);
+    else      toast('Refresh failed: ' + (r.error || 'unknown'));
+
+    renderAll();
 }
+
+function renderAll() {
+    renderStatus();
+    renderProfiles();
+    renderNodes();
+    renderFooter();
+}
+
+// ── init ───────────────────────────────────────────────────────────────────
+(async function init() {
+    const r = await send({ type: 'GET_STATE' });
+    if (!r.ok) {
+        toast('Failed to load state');
+        return;
+    }
+    state = r.state;
+    renderAll();
+
+    // Auto-refresh nodes if last fetch was > 30s ago
+    if (!state.lastFetch || Date.now() - state.lastFetch > 30000) {
+        refreshNodes();
+    }
+
+    $('refreshBtn').addEventListener('click', refreshNodes);
+    $('optionsBtn').addEventListener('click', () => {
+        chrome.runtime.openOptionsPage();
+    });
+    $('openHubBtn').addEventListener('click', () => {
+        chrome.tabs.create({ url: state.hubApi });
+    });
+})();

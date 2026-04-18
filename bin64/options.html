@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ProxyHub · Settings</title>
+<style>
+  :root {
+    --bg:            #f5f3ff;
+    --bg-2:          #ede9fe;
+    --card:          #ffffff;
+    --text:          #1e1b4b;
+    --text-muted:    #64748b;
+    --border:        #e2e8f0;
+    --border-soft:   #f1f5f9;
+    --accent:        #6366f1;
+    --accent-2:      #8b5cf6;
+    --success:       #10b981;
+    --danger:        #ef4444;
+    --radius:        12px;
+    --shadow:        0 2px 8px rgba(99,102,241,.08), 0 1px 3px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f0f1e; --bg-2: #1a1a2e; --card: #1e1e2e;
+      --text: #e2e8f0; --text-muted: #94a3b8;
+      --border: #2d2d44; --border-soft: #252540;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: linear-gradient(160deg, var(--bg) 0%, var(--bg-2) 100%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    min-height: 100vh;
+    padding: 40px 20px;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    margin-bottom: 4px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .sub { color: var(--text-muted); margin-bottom: 28px; font-size: 14px; }
+
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 24px;
+    box-shadow: var(--shadow);
+    margin-bottom: 18px;
+  }
+  .card h2 {
+    font-size: 14px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    font-weight: 500;
+  }
+  input[type=text], input[type=number], select, textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.15);
+  }
+  textarea { font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 12px; line-height: 1.5; resize: vertical; min-height: 90px; }
+
+  .row { display: flex; gap: 12px; }
+  .row > * { flex: 1; }
+  .field { margin-bottom: 14px; }
+  .field-hint { font-size: 11px; color: var(--text-muted); margin-top: 5px; }
+
+  button {
+    padding: 10px 18px;
+    border: none;
+    border-radius: 8px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: white;
+  }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(99,102,241,.35); }
+  .btn-secondary {
+    background: var(--border-soft);
+    color: var(--text);
+  }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-danger {
+    background: transparent;
+    color: var(--danger);
+    padding: 6px 10px;
+  }
+  .btn-danger:hover { background: rgba(239,68,68,.1); }
+
+  .rule-row {
+    display: grid;
+    grid-template-columns: 120px 1fr 1fr 32px;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .rule-row select, .rule-row input { padding: 8px 10px; font-size: 12px; }
+  .rule-row .btn-danger { justify-self: center; padding: 4px 8px; font-size: 18px; line-height: 1; }
+
+  .actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 16px;
+  }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    background: var(--border-soft);
+    color: var(--text-muted);
+    margin-left: 10px;
+  }
+  .status-pill.ok     { background: rgba(16,185,129,.12); color: var(--success); }
+  .status-pill.err    { background: rgba(239,68,68,.12); color: var(--danger); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .toast {
+    position: fixed;
+    bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--text);
+    color: var(--card);
+    padding: 10px 18px;
+    border-radius: 24px;
+    font-size: 13px;
+    font-weight: 500;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    opacity: 0;
+    transition: all .3s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+  code {
+    background: var(--border-soft); padding: 1px 5px; border-radius: 4px;
+    font-family: ui-monospace, 'SF Mono', Menlo, monospace; font-size: 11px;
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <h1>ProxyHub Settings</h1>
+  <div class="sub">Configure your proxy hub, bypasses, and auto-switch rules.</div>
+
+  <div class="card">
+    <h2>Hub connection
+      <span class="status-pill" id="hubStatus"><span class="dot"></span><span id="hubStatusText">checking…</span></span>
+    </h2>
+
+    <div class="field">
+      <label for="hubApi">Hub dashboard URL</label>
+      <input type="text" id="hubApi" placeholder="https://hub.oofbomb.xyz">
+      <div class="field-hint">Where <code>/ext/nodes</code> lives. Include the scheme and port if not 80/443.</div>
+    </div>
+
+    <div class="row">
+      <div class="field">
+        <label for="proxyHost">Proxy host (SOCKS5)</label>
+        <input type="text" id="proxyHost" placeholder="hub.oofbomb.xyz">
+        <div class="field-hint">Host your browser dials. Usually same as hub.</div>
+      </div>
+      <div class="field">
+        <label for="defaultPort">Default port</label>
+        <input type="number" id="defaultPort" placeholder="1080" min="1" max="65535">
+        <div class="field-hint">Load-balanced port on the hub.</div>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button class="btn-secondary" id="testBtn">Test connection</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Bypass list</h2>
+    <div class="field">
+      <label for="bypassList">Hosts / CIDRs that skip the proxy (one per line)</label>
+      <textarea id="bypassList" rows="6"></textarea>
+      <div class="field-hint">Supports <code>&lt;local&gt;</code>, <code>localhost</code>, <code>*.corp.com</code>, <code>192.168.0.0/16</code>.</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Auto-switch rules</h2>
+    <div class="field-hint" style="margin-bottom: 14px;">
+      When the <strong>Auto-switch</strong> profile is active, matching URLs use the chosen profile. Non-matching URLs fall back to the default.
+    </div>
+
+    <div id="rules"></div>
+
+    <div class="actions" style="justify-content: space-between;">
+      <button class="btn-secondary" id="addRuleBtn">+ Add rule</button>
+
+      <div style="display:flex; gap:10px; align-items:center;">
+        <label for="fallback" style="margin:0; font-size:12px;">Fallback:</label>
+        <select id="fallback" style="width: auto;"></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="actions" style="margin-top: 24px;">
+    <button class="btn-secondary" id="resetBtn">Reset to defaults</button>
+    <button class="btn-primary" id="saveBtn">Save</button>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="options.js"></script>
+</body>
+</html>

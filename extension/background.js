@@ -1,200 +1,288 @@
-// background.js — ProxyHub VPN Extension
-// MV3 service worker — no inline scripts, no self.addEventListener conflicts
+// ============================================================================
+//  ProxyHub  ·  background.js (MV3 service worker)
+// ----------------------------------------------------------------------------
+//  Routes traffic through hub.oofbomb.xyz. The hub chains to Tailscale nodes
+//  via `parent socks5` — clients never dial Tailscale IPs directly.
+//
+//  Profiles:
+//    direct       → no proxy
+//    auto         → hub.oofbomb.xyz:1080 (load-balanced across all nodes)
+//    node_<id>    → hub.oofbomb.xyz:<assignedPort>  (one specific node)
+//    auto_switch  → PAC script with URL rules → profile
+// ============================================================================
 
-const DEFAULT_HUB = 'http://node0.vpn.oofbomb.xyz';
-
-let state = {
-    connected: false,
-    nodeId:    null,
-    nodeIp:    null,
-    nodeName:  null,
-    hubUrl:    DEFAULT_HUB,
+const DEFAULTS = {
+    hubApi:        'https://hub.oofbomb.xyz',  // Dashboard API base
+    proxyHost:     'hub.oofbomb.xyz',          // Host in the browser's SOCKS5 config
+    defaultPort:   1080,                       // Load-balanced port on the hub
+    activeProfile: 'direct',                   // Current profile id
+    bypassList:    ['<local>', 'localhost', '127.0.0.1/8', '::1', '192.168.0.0/16', '10.0.0.0/8'],
+    autoSwitch:    { rules: [], fallback: 'auto' },  // [{pattern, match, profile}], match: 'host'|'url'|'wildcard'
+    nodes:         [],                         // Cached from hub
+    lastFetch:     0,
 };
 
-// ── Init: restore persisted state on service worker startup ───────────────────
-chrome.storage.local.get(['vpnState', 'hubUrl'], (data) => {
-    if (data.hubUrl) state.hubUrl = data.hubUrl;
-    if (data.vpnState?.connected && data.vpnState.nodeIp) {
-        state = { ...state, ...data.vpnState };
-        applyProxy(state.nodeIp, 1080);
-        updateBadge(true);
-    }
-    fetchNodes();
+// ── storage helpers ────────────────────────────────────────────────────────
+const store = {
+    get:    (keys)       => new Promise(r => chrome.storage.local.get(keys, r)),
+    set:    (obj)        => new Promise(r => chrome.storage.local.set(obj, r)),
+    remove: (key)        => new Promise(r => chrome.storage.local.remove(key, r)),
+};
+
+async function getState() {
+    const s = await store.get(Object.keys(DEFAULTS));
+    return { ...DEFAULTS, ...s };
+}
+
+// ── install / startup ─────────────────────────────────────────────────────
+chrome.runtime.onInstalled.addListener(async () => {
+    const existing = await store.get(Object.keys(DEFAULTS));
+    const patch = {};
+    for (const k of Object.keys(DEFAULTS)) if (existing[k] === undefined) patch[k] = DEFAULTS[k];
+    if (Object.keys(patch).length) await store.set(patch);
+    await refreshNodes();
+    await applyActiveProfile();
 });
 
-// ── Message listener ──────────────────────────────────────────────────────────
+chrome.runtime.onStartup.addListener(async () => {
+    await refreshNodes();
+    await applyActiveProfile();
+});
+
+// Refresh node list every 60s while browser is open
+chrome.alarms?.create?.('refresh-nodes', { periodInMinutes: 1 });
+chrome.alarms?.onAlarm.addListener(a => { if (a.name === 'refresh-nodes') refreshNodes(); });
+
+// ── node list from hub ─────────────────────────────────────────────────────
+async function refreshNodes() {
+    const { hubApi } = await getState();
+    try {
+        const res  = await fetch(`${hubApi.replace(/\/$/, '')}/ext/nodes`, { cache: 'no-store' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const nodes = (data.nodes || []).map(n => ({
+            id:            n.id,
+            name:          n.name,
+            region:        n.region,
+            enabled:       n.enabled !== false,
+            online:        n.online === true,
+            maintenance:   n.maintenance === true,
+            latencyMs:     n.latencyMs ?? null,
+            assignedPort:  n.assignedPort || null,
+            reason:        n.maintenanceReason || n.offlineReason || null,
+        }));
+        await store.set({ nodes, lastFetch: Date.now() });
+        return { ok: true, nodes };
+    } catch (e) {
+        console.warn('[ProxyHub] node refresh failed:', e.message);
+        return { ok: false, error: e.message };
+    }
+}
+
+// ── proxy config ───────────────────────────────────────────────────────────
+function bypassPac(list) {
+    // Returns a JS expression that evaluates to true if host should bypass
+    return list.map(p => {
+        if (p === '<local>')       return `isPlainHostName(host)`;
+        if (p.includes('/'))        return `isInNet(host, "${p.split('/')[0]}", "${cidrMask(p)}")`;
+        if (p.includes('*'))        return `shExpMatch(host, "${p}")`;
+        return `dnsDomainIs(host, "${p.startsWith('.') ? p : '.'+p}") || host === "${p}"`;
+    }).join(' || ');
+}
+
+function cidrMask(cidr) {
+    const bits = parseInt(cidr.split('/')[1], 10);
+    const mask = 0xffffffff << (32 - bits) >>> 0;
+    return [mask>>>24, mask>>>16 & 255, mask>>>8 & 255, mask & 255].join('.');
+}
+
+async function applyActiveProfile() {
+    const s = await getState();
+    const profile = s.activeProfile || 'direct';
+
+    if (profile === 'direct') {
+        await setChromeProxy({ mode: 'direct' });
+        await setBadge('', '#6366f1');
+        notify('Proxy off', 'Direct connection — no proxy');
+        return;
+    }
+
+    if (profile === 'system') {
+        await setChromeProxy({ mode: 'system' });
+        await setBadge('SYS', '#64748b');
+        return;
+    }
+
+    if (profile === 'auto') {
+        // Load-balanced across all nodes via hub's default port
+        await setFixedSocks5(s.proxyHost, s.defaultPort, s.bypassList);
+        await setBadge('ON', '#10b981');
+        notify('ProxyHub connected', `Auto — ${s.proxyHost}:${s.defaultPort}`);
+        return;
+    }
+
+    if (profile === 'auto_switch') {
+        await setPacScript(buildAutoSwitchPac(s));
+        await setBadge('AS', '#8b5cf6');
+        notify('ProxyHub connected', 'Auto-switch active');
+        return;
+    }
+
+    if (profile.startsWith('node_')) {
+        const node = (s.nodes || []).find(n => n.id === profile);
+        if (!node) {
+            console.warn('[ProxyHub] unknown node profile, falling back to auto');
+            await store.set({ activeProfile: 'auto' });
+            return applyActiveProfile();
+        }
+        const port = node.assignedPort || s.defaultPort;
+        await setFixedSocks5(s.proxyHost, port, s.bypassList);
+        await setBadge('ON', '#10b981');
+        notify('ProxyHub connected', `${node.name} — ${s.proxyHost}:${port}`);
+        return;
+    }
+}
+
+function setChromeProxy(config) {
+    return new Promise((resolve, reject) => {
+        chrome.proxy.settings.set(
+            { value: config, scope: 'regular' },
+            () => chrome.runtime.lastError ? reject(chrome.runtime.lastError) : resolve()
+        );
+    });
+}
+
+function setFixedSocks5(host, port, bypassList) {
+    return setChromeProxy({
+        mode: 'fixed_servers',
+        rules: {
+            singleProxy: { scheme: 'socks5', host, port: parseInt(port, 10) },
+            bypassList,
+        },
+    });
+}
+
+function setPacScript(pac) {
+    return setChromeProxy({
+        mode: 'pac_script',
+        pacScript: { data: pac, mandatory: false },
+    });
+}
+
+// ── Auto-switch: build a PAC script from rules ─────────────────────────────
+function buildAutoSwitchPac(s) {
+    const nodeMap = {};
+    for (const n of s.nodes || []) nodeMap[n.id] = n;
+
+    function profileToProxyString(profId) {
+        if (profId === 'direct')      return 'DIRECT';
+        if (profId === 'auto')        return `SOCKS5 ${s.proxyHost}:${s.defaultPort}; DIRECT`;
+        if (profId.startsWith('node_')) {
+            const n = nodeMap[profId];
+            const port = (n && n.assignedPort) ? n.assignedPort : s.defaultPort;
+            return `SOCKS5 ${s.proxyHost}:${port}; DIRECT`;
+        }
+        return 'DIRECT';
+    }
+
+    const bypassExpr = bypassPac(s.bypassList || []);
+    const rulesJs = (s.autoSwitch?.rules || []).map(r => {
+        const proxy = profileToProxyString(r.profile);
+        let cond;
+        if (r.match === 'host')            cond = `shExpMatch(host, ${JSON.stringify(r.pattern)})`;
+        else if (r.match === 'url')        cond = `shExpMatch(url,  ${JSON.stringify(r.pattern)})`;
+        else if (r.match === 'regex')      cond = `(new RegExp(${JSON.stringify(r.pattern)})).test(url)`;
+        else                               cond = `shExpMatch(host, ${JSON.stringify(r.pattern)})`;
+        return `  if (${cond}) return ${JSON.stringify(proxy)};`;
+    }).join('\n');
+
+    const fallback = profileToProxyString(s.autoSwitch?.fallback || 'auto');
+
+    return `
+function FindProxyForURL(url, host) {
+  if (${bypassExpr || 'false'}) return "DIRECT";
+${rulesJs}
+  return ${JSON.stringify(fallback)};
+}`.trim();
+}
+
+// ── badge + notifications ──────────────────────────────────────────────────
+function setBadge(text, color) {
+    try {
+        chrome.action.setBadgeText({ text: text || '' });
+        if (color) chrome.action.setBadgeBackgroundColor({ color });
+    } catch {}
+    return Promise.resolve();
+}
+
+let lastNotifyAt = 0;
+function notify(title, message) {
+    // Rate limit: 1 notification per 2s (avoid spam on rapid switches)
+    const now = Date.now();
+    if (now - lastNotifyAt < 2000) return;
+    lastNotifyAt = now;
+    try {
+        chrome.notifications.create({
+            type:    'basic',
+            iconUrl: 'icons/icon48.png',
+            title,
+            message: message || '',
+            priority: 0,
+        });
+    } catch {}
+}
+
+// ── message API (popup / options call these) ───────────────────────────────
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     (async () => {
-        switch (msg.type) {
-
-            case 'CONNECT': {
-                const node = msg.node;
-                if (!node?.tailscaleIp) {
-                    sendResponse({ ok: false, error: 'No Tailscale IP for this node' });
+        try {
+            switch (msg.type) {
+                case 'GET_STATE': {
+                    const s = await getState();
+                    sendResponse({ ok: true, state: s });
                     break;
                 }
-                try {
-                    await applyProxy(node.tailscaleIp, 1080);
-                    state.connected = true;
-                    state.nodeId    = node.id;
-                    state.nodeIp    = node.tailscaleIp;
-                    state.nodeName  = node.name;
-                    await chrome.storage.local.set({ vpnState: state });
-                    updateBadge(true);
-                    notify('ProxyHub Connected', `${node.name} — ${node.tailscaleIp}`);
-                    broadcast({ type: 'CONNECTED', node });
+                case 'SET_PROFILE': {
+                    await store.set({ activeProfile: msg.profile });
+                    await applyActiveProfile();
                     sendResponse({ ok: true });
-                } catch(e) {
-                    sendResponse({ ok: false, error: e.message });
+                    break;
                 }
-                break;
+                case 'REFRESH_NODES': {
+                    const r = await refreshNodes();
+                    sendResponse(r);
+                    break;
+                }
+                case 'SAVE_SETTINGS': {
+                    await store.set(msg.patch || {});
+                    // If hub URL changed, refresh nodes so we pull from the new hub
+                    if (msg.patch?.hubApi) await refreshNodes();
+                    await applyActiveProfile();
+                    sendResponse({ ok: true });
+                    break;
+                }
+                case 'PING_HUB': {
+                    const { hubApi } = await getState();
+                    const t0 = performance.now();
+                    try {
+                        const r = await fetch(`${hubApi.replace(/\/$/, '')}/ext/ping`, { cache: 'no-store' });
+                        sendResponse({ ok: r.ok, latencyMs: Math.round(performance.now() - t0) });
+                    } catch (e) {
+                        sendResponse({ ok: false, error: e.message });
+                    }
+                    break;
+                }
+                default:
+                    sendResponse({ ok: false, error: 'unknown message' });
             }
-
-            case 'DISCONNECT': {
-                await clearProxy();
-                state.connected = false;
-                state.nodeId    = null;
-                state.nodeIp    = null;
-                state.nodeName  = null;
-                await chrome.storage.local.set({ vpnState: state });
-                updateBadge(false);
-                notify('ProxyHub', 'Disconnected');
-                broadcast({ type: 'DISCONNECTED' });
-                sendResponse({ ok: true });
-                break;
-            }
-
-            case 'FETCH_NODES': {
-                const nodes = await fetchNodes();
-                sendResponse({ nodes });
-                break;
-            }
-
-            case 'CHECK_WHITELIST': {
-                const result = await checkWhitelist();
-                sendResponse(result);
-                break;
-            }
-
-            case 'GET_STATE':
-                sendResponse(state);
-                break;
-
-            case 'SET_HUB':
-                state.hubUrl = msg.url;
-                await chrome.storage.local.set({ hubUrl: msg.url });
-                sendResponse({ ok: true });
-                break;
-
-            case 'PING_NODE': {
-                const latency = await pingNode(msg.url);
-                sendResponse({ latencyMs: latency });
-                break;
-            }
+        } catch (e) {
+            sendResponse({ ok: false, error: e.message });
         }
     })();
-    return true;
+    return true;  // async response
 });
 
-// ── Proxy helpers ─────────────────────────────────────────────────────────────
-function applyProxy(host, port) {
-    return new Promise((resolve, reject) => {
-        chrome.proxy.settings.set({
-            value: {
-                mode: 'fixed_servers',
-                rules: {
-                    singleProxy: { scheme: 'socks5', host, port: parseInt(port) }
-                }
-            },
-            scope: 'regular'
-        }, () => {
-            if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
-            else resolve();
-        });
-    });
-}
-
-function clearProxy() {
-    return new Promise(resolve => {
-        chrome.proxy.settings.clear({ scope: 'regular' }, resolve);
-    });
-}
-
-// ── Badge ─────────────────────────────────────────────────────────────────────
-function updateBadge(connected) {
-    chrome.action.setBadgeText({ text: connected ? 'ON' : '' });
-    chrome.action.setBadgeBackgroundColor({ color: connected ? '#34d399' : '#f87171' });
-}
-
-// ── Notifications ─────────────────────────────────────────────────────────────
-function notify(title, message) {
-    chrome.notifications.create('proxyhub_' + Date.now(), {
-        type:     'basic',
-        iconUrl:  'icons/icon.png',
-        title,
-        message,
-    });
-}
-
-// ── Broadcast to popup ────────────────────────────────────────────────────────
-function broadcast(msg) {
-    chrome.runtime.sendMessage(msg).catch(() => {});
-}
-
-// ── Fetch nodes ───────────────────────────────────────────────────────────────
-async function fetchNodes() {
-    try {
-        const r = await fetch(`${state.hubUrl}/ext/nodes`, {
-            signal: AbortSignal.timeout(5000),
-            cache:  'no-store',
-        });
-        if (!r.ok) throw new Error('Non-OK response');
-        const { nodes } = await r.json();
-        await chrome.storage.local.set({ availableNodes: nodes || [], hubOnline: true, lastFetch: Date.now() });
-        broadcast({ type: 'NODES_UPDATED', nodes: nodes || [] });
-        return nodes || [];
-    } catch(e) {
-        await chrome.storage.local.set({ hubOnline: false });
-        broadcast({ type: 'HUB_OFFLINE', error: e.message });
-        return [];
-    }
-}
-
-// ── Whitelist check ───────────────────────────────────────────────────────────
-async function checkWhitelist() {
-    try {
-        const r = await fetch(`${state.hubUrl}/ext/check`, {
-            signal: AbortSignal.timeout(5000),
-        });
-        if (!r.ok) throw new Error();
-        return await r.json();
-    } catch {
-        return { allowed: null, ip: null, error: 'Hub unreachable' };
-    }
-}
-
-// ── Latency ping ──────────────────────────────────────────────────────────────
-async function pingNode(url) {
-    try {
-        const start = Date.now();
-        await fetch(url, { signal: AbortSignal.timeout(3000), cache: 'no-store' });
-        return Date.now() - start;
-    } catch {
-        return null;
-    }
-}
-
-// ── Alarms — periodic node refresh every 30s ──────────────────────────────────
-// chrome.alarms requires "alarms" in manifest permissions
-chrome.alarms.create('refreshNodes', { periodInMinutes: 0.5 });
-
-chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === 'refreshNodes') fetchNodes();
-});
-
-// ── Extension install/update handler ──────────────────────────────────────────
-chrome.runtime.onInstalled.addListener(() => {
-    console.log('[ProxyHub] Extension installed/updated');
-    // Re-create alarm on install in case it was cleared
-    chrome.alarms.create('refreshNodes', { periodInMinutes: 0.5 });
+// ── proxy error surface (helps debug unreachable hub) ──────────────────────
+chrome.proxy?.onProxyError?.addListener(details => {
+    console.warn('[ProxyHub] proxy error:', details);
 });
