@@ -128,7 +128,7 @@ async function reset() {
     await chrome.storage.local.clear();
     window.location.reload();
 }
-
+//  dd
 (async function init() {
     const r = await send({ type: 'GET_STATE' });
     if (!r.ok) { toast('Failed to load state'); return; }
