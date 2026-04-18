@@ -365,6 +365,14 @@ function renderAll() {
     $('powerBtn').addEventListener('click', togglePower);
     $('refreshBtn').addEventListener('click', refreshNodes);
     $('notifBtn').addEventListener('click', toggleNotifs);
+    $('clearNotifsBtn').addEventListener('click', clearNotifs);
+    $('closeNotifBtn').addEventListener('click', toggleNotifs);
+    
+    // Close notification panel when clicking backdrop
+    $('notifPanel').addEventListener('click', (e) => {
+        if (e.target.id === 'notifPanel') toggleNotifs();
+    });
+    
     $('optionsBtn').addEventListener('click', () => {
         chrome.runtime.openOptionsPage();
     });

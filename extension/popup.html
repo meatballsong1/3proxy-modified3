@@ -474,13 +474,13 @@
   <button class="text-btn" id="openHubBtn">Open hub ↗</button>
 </div>
 
-<div id="notifPanel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;" onclick="if(event.target.id==='notifPanel')toggleNotifs()">
-  <div style="background:var(--card);margin:40px auto;max-width:380px;border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:calc(100vh - 80px);overflow:hidden;display:flex;flex-direction:column;" onclick="event.stopPropagation()">
+<div id="notifPanel" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.4);z-index:9999;">
+  <div style="background:var(--card);margin:40px auto;max-width:380px;border-radius:var(--radius);box-shadow:var(--shadow-lg);max-height:calc(100vh - 80px);overflow:hidden;display:flex;flex-direction:column;">
     <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
       <div style="font-weight:600;font-size:14px;">Notifications</div>
       <div style="display:flex;gap:6px;">
-        <button class="text-btn" onclick="clearNotifs()">Clear</button>
-        <button class="icon-btn" onclick="toggleNotifs()" style="width:24px;height:24px;">✕</button>
+        <button class="text-btn" id="clearNotifsBtn">Clear</button>
+        <button class="icon-btn" id="closeNotifBtn" style="width:24px;height:24px;">✕</button>
       </div>
     </div>
     <div id="notifList" style="overflow-y:auto;flex:1;padding:8px;"></div>
