@@ -38,7 +38,6 @@
       --danger-soft: #7f1d1d;
       --warning-soft:#78350f;
     }
-    .item.disabled { background: rgba(30,30,46,0.55); }
   }
 
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -267,8 +266,8 @@
     background: linear-gradient(90deg, rgba(99,102,241,.08), rgba(139,92,246,.08));
   }
   .item.active .item-name { color: var(--accent); }
-  .item.disabled { background: rgba(255,255,255,0.55); cursor: not-allowed; }
-  .item.disabled:hover { background: rgba(255,255,255,0.55); }
+  .item.disabled { opacity: 0.55; cursor: not-allowed; }
+  .item.disabled:hover { background: transparent; }
 
   .item-icon {
     width: 28px; height: 28px;
