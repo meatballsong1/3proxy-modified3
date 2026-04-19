@@ -1,74 +1,64 @@
-const $ = id => document.getElementById(id);
+const loginForm = document.getElementById('loginForm');
+const accessTokenInput = document.getElementById('accessToken');
+const loginBtn = document.getElementById('loginBtn');
+const errorDiv = document.getElementById('error');
 
-async function validateKey(key) {
-    try {
-        const hubApi = 'https://vpn.oofbomb.xyz';  // Default hub URL
-        const res = await fetch(`${hubApi}/keys/validate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key })
-        });
-        const data = await res.json();
-        return data;
-    } catch (e) {
-        return { valid: false, error: 'Connection failed' };
-    }
-}
+// Focus input on load
+accessTokenInput.focus();
 
-function showError(msg) {
-    const errorEl = $('error');
-    errorEl.textContent = msg;
-    errorEl.classList.add('show');
-    setTimeout(() => errorEl.classList.remove('show'), 3000);
-}
-
-function showWelcome() {
-    const welcomeEl = $('welcome');
-    welcomeEl.classList.add('show');
+loginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  
+  const key = accessTokenInput.value.trim();
+  if (!key) {
+    showError('Please enter an access token');
+    return;
+  }
+  
+  loginBtn.disabled = true;
+  loginBtn.textContent = 'Validating...';
+  errorDiv.classList.remove('show');
+  
+  try {
+    // Get hub URL from storage
+    const result = await chrome.storage.local.get(['hubUrl']);
+    const hubUrl = result.hubUrl || 'https://vpn.oofbomb.xyz';
     
-    setTimeout(() => {
-        welcomeEl.style.animation = 'fadeOut 0.5s';
-        setTimeout(() => {
-            // Redirect to main popup
-            window.location.href = 'popup.html';
-        }, 500);
-    }, 1500);
-}
-
-$('loginForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
+    // Validate the key
+    const response = await fetch(`${hubUrl}/keys/validate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key })
+    });
     
-    const key = $('accessKey').value.trim();
-    if (!key) {
-        showError('Please enter an access token');
-        return;
-    }
+    const data = await response.json();
     
-    const loginBtn = $('loginBtn');
-    loginBtn.disabled = true;
-    loginBtn.textContent = 'validating...';
-    
-    const result = await validateKey(key);
-    
-    if (result.valid) {
-        // Save the key to extension state
-        await chrome.storage.local.set({ accessKey: key });
-        
-        showWelcome();
+    if (data.valid) {
+      // Save the key
+      await chrome.storage.local.set({ accessKey: key });
+      
+      // Show success and redirect
+      loginBtn.textContent = 'Success!';
+      loginBtn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+      
+      setTimeout(() => {
+        window.location.href = 'popup.html';
+      }, 500);
     } else {
-        showError(result.error || 'Invalid access token');
-        loginBtn.disabled = false;
-        loginBtn.textContent = 'login';
+      showError(data.error || 'Invalid access key');
+      loginBtn.disabled = false;
+      loginBtn.textContent = 'Login';
     }
+  } catch (error) {
+    showError('Connection failed. Check hub URL in settings.');
+    loginBtn.disabled = false;
+    loginBtn.textContent = 'Login';
+    console.error('Login error:', error);
+  }
 });
 
-// Check if already logged in
-chrome.storage.local.get(['accessKey'], async (data) => {
-    if (data.accessKey) {
-        // Verify it's still valid
-        const result = await validateKey(data.accessKey);
-        if (result.valid) {
-            window.location.href = 'popup.html';
-        }
-    }
-});
+function showError(message) {
+  errorDiv.textContent = message;
+  errorDiv.classList.add('show');
+  accessTokenInput.focus();
+}
