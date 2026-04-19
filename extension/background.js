@@ -1,22 +1,29 @@
 let state = {
-  currentNode: null,
+  accessKey: null,
+  activeProfile: 'direct',
+  lastActiveProfile: 'auto',
   nodes: [],
-  hotloop: { enabled: false, mode: 'weighted' },
-  portMap: {},
-  hubUrl: 'https://vpn.oofbomb.xyz',
-  accessKey: null  // Added for authentication
+  defaultPort: 1080,
+  proxyHost: 'vpn.oofbomb.xyz',
+  hubApi: 'https://vpn.oofbomb.xyz',
+  autoSwitch: { rules: [], fallback: 'auto' },
+  bypassList: [],
+  lastFetch: null,
+  notifications: []
 };
 
 // Load state from storage on startup
-chrome.storage.local.get(['currentNode', 'hubUrl', 'accessKey'], (result) => {
-  if (result.currentNode) state.currentNode = result.currentNode;
-  if (result.hubUrl) state.hubUrl = result.hubUrl;
-  if (result.accessKey) state.accessKey = result.accessKey;
-  refreshNodes();
+chrome.storage.local.get(null, (result) => {
+  Object.assign(state, result);
+  if (state.accessKey) {
+    refreshNodes();
+  }
 });
 
 // Refresh nodes every 30 seconds
-setInterval(refreshNodes, 30000);
+setInterval(() => {
+  if (state.accessKey) refreshNodes();
+}, 30000);
 
 async function refreshNodes() {
   try {
@@ -25,14 +32,14 @@ async function refreshNodes() {
       return;
     }
     
-    const response = await fetch(`${state.hubUrl}/ext/nodes`, {
+    const hubApi = state.hubApi || 'https://vpn.oofbomb.xyz';
+    const response = await fetch(`${hubApi}/ext/nodes`, {
       headers: {
         'X-Access-Key': state.accessKey
       }
     });
     
     if (response.status === 401) {
-      // Invalid key, clear it
       state.accessKey = null;
       await chrome.storage.local.remove('accessKey');
       console.log('[ProxyHub] Access key invalid, cleared');
@@ -43,8 +50,8 @@ async function refreshNodes() {
     
     const data = await response.json();
     state.nodes = data.nodes || [];
-    state.hotloop = data.hotloop || { enabled: false };
-    state.portMap = data.portMap || {};
+    state.lastFetch = Date.now();
+    await chrome.storage.local.set({ nodes: state.nodes, lastFetch: state.lastFetch });
     
     console.log('[ProxyHub] Nodes refreshed:', state.nodes.length);
   } catch (error) {
@@ -55,8 +62,8 @@ async function refreshNodes() {
 // Listen for storage changes
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === 'local') {
-    if (changes.hubUrl) state.hubUrl = changes.hubUrl.newValue;
-    if (changes.currentNode) state.currentNode = changes.currentNode.newValue;
+    if (changes.activeProfile) state.activeProfile = changes.activeProfile.newValue;
+    if (changes.hubApi) state.hubApi = changes.hubApi.newValue;
     if (changes.accessKey) {
       state.accessKey = changes.accessKey.newValue;
       if (state.accessKey) refreshNodes();
@@ -64,49 +71,54 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Set proxy based on current node
-async function applyProxy() {
-  if (!state.currentNode || state.currentNode === 'DIRECT') {
-    await chrome.proxy.settings.clear({});
-    console.log('[ProxyHub] Proxy cleared (DIRECT)');
-    return;
-  }
-  
-  const node = state.nodes.find(n => n.id === state.currentNode);
-  if (!node) {
-    console.log('[ProxyHub] Node not found:', state.currentNode);
-    return;
-  }
-  
-  let proxyHost = new URL(state.hubUrl).hostname;
-  let proxyPort = state.portMap[state.currentNode] || 1080;
-  
-  const config = {
-    mode: 'fixed_servers',
-    rules: {
-      singleProxy: {
-        scheme: 'socks5',
-        host: proxyHost,
-        port: proxyPort
+// Message handler with new protocol
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  (async () => {
+    const type = request.type;
+    
+    if (type === 'GET_STATE') {
+      sendResponse({ ok: true, state });
+    }
+    else if (type === 'SET_PROFILE') {
+      const profileId = request.profile;
+      state.activeProfile = profileId;
+      await chrome.storage.local.set({ activeProfile: profileId });
+      sendResponse({ ok: true });
+    }
+    else if (type === 'REFRESH_NODES') {
+      try {
+        await refreshNodes();
+        sendResponse({ ok: true, nodes: state.nodes });
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
       }
     }
-  };
+    else if (type === 'PING_HUB') {
+      try {
+        const hubApi = state.hubApi || 'https://vpn.oofbomb.xyz';
+        const start = Date.now();
+        const response = await fetch(`${hubApi}/health`, { timeout: 5000 });
+        const latencyMs = Date.now() - start;
+        
+        if (response.ok) {
+          sendResponse({ ok: true, latencyMs });
+        } else {
+          sendResponse({ ok: false, error: `HTTP ${response.status}` });
+        }
+      } catch (error) {
+        sendResponse({ ok: false, error: error.message });
+      }
+    }
+    else if (type === 'SAVE_SETTINGS') {
+      const patch = request.patch || {};
+      Object.assign(state, patch);
+      await chrome.storage.local.set(patch);
+      sendResponse({ ok: true });
+    }
+    else {
+      sendResponse({ ok: false, error: 'Unknown message type' });
+    }
+  })();
   
-  await chrome.proxy.settings.set({ value: config, scope: 'regular' });
-  console.log(`[ProxyHub] Proxy set: ${proxyHost}:${proxyPort} (${node.name})`);
-}
-
-// Message handler
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'getState') {
-    sendResponse(state);
-  } else if (request.action === 'setNode') {
-    state.currentNode = request.nodeId;
-    chrome.storage.local.set({ currentNode: request.nodeId });
-    applyProxy();
-    sendResponse({ success: true });
-  } else if (request.action === 'refreshNodes') {
-    refreshNodes().then(() => sendResponse({ success: true }));
-    return true; // Keep channel open for async
-  }
+  return true; // Keep channel open for async
 });

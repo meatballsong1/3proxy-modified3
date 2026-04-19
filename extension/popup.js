@@ -1,12 +1,5 @@
 // ProxyHub  ·  popup.js
 
-// Check if user is logged in
-chrome.storage.local.get(['accessKey'], (result) => {
-  if (!result.accessKey) {
-    window.location.href = 'login.html';
-  }
-});
-
 const $  = id => document.getElementById(id);
 const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
 
@@ -352,7 +345,75 @@ function renderAll() {
     renderFooter();
 }
 
+function showLoginOverlay() {
+    $('loginOverlay').classList.add('show');
+    $('accessTokenInput').focus();
+}
+
+function hideLoginOverlay() {
+    $('loginOverlay').classList.remove('show');
+}
+
+async function handleLogin(event) {
+    event.preventDefault();
+    const token = $('accessTokenInput').value.trim();
+    const errorEl = $('loginError');
+    
+    if (!token) {
+        errorEl.textContent = 'Please enter an access token';
+        errorEl.classList.add('show');
+        return;
+    }
+    
+    errorEl.classList.remove('show');
+    
+    // Try to validate the token by saving it and refreshing nodes
+    await chrome.storage.local.set({ accessKey: token });
+    
+    // Try to refresh nodes to validate the token
+    const r = await send({ type: 'REFRESH_NODES' });
+    
+    if (r.ok) {
+        // Token is valid, get full state
+        const stateResp = await send({ type: 'GET_STATE' });
+        if (stateResp.ok) {
+            state = stateResp.state;
+            state.notifications = [];
+            hideLoginOverlay();
+            $('accessTokenInput').value = '';
+            renderAll();
+            
+            if (!state.lastFetch || Date.now() - state.lastFetch > 30000) {
+                refreshNodes();
+            }
+        }
+    } else {
+        // Clear invalid token
+        await chrome.storage.local.remove('accessKey');
+        errorEl.textContent = r.error || 'Invalid token';
+        errorEl.classList.add('show');
+    }
+}
+
+// Listen for storage changes (including when background.js clears invalid token)
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.accessKey) {
+        if (!changes.accessKey.newValue) {
+            // accessKey was cleared (likely due to 401 error)
+            showLoginOverlay();
+        }
+    }
+});
+
 (async function init() {
+    // Check if user is logged in
+    const storage = await new Promise(resolve => chrome.storage.local.get(['accessKey'], resolve));
+    
+    if (!storage.accessKey) {
+        showLoginOverlay();
+        return;
+    }
+
     const r = await send({ type: 'GET_STATE' });
     if (!r.ok) {
         toast('Failed to load state');
