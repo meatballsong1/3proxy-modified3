@@ -1,3 +1,5 @@
+// ProxyHub  ·  popup.js
+
 // Check if user is logged in
 chrome.storage.local.get(['accessKey'], (result) => {
   if (!result.accessKey) {
@@ -5,8 +7,13 @@ chrome.storage.local.get(['accessKey'], (result) => {
   }
 });
 
-// Rest of popup.js continues here...
-// (Copy the rest from your existing popup.js)
+const $  = id => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
+
+const ICONS = {
+    direct: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>`,
+    auto:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>`,
+    switch: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>`,
     node:   `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="8" rx="2"/><rect x="3" y="14" width="18" height="6" rx="2"/><circle cx="7" cy="8" r="0.5"/><circle cx="7" cy="17" r="0.5"/></svg>`,
 };
 
@@ -352,13 +359,6 @@ function renderAll() {
         return;
     }
     state = r.state;
-    
-    // Check if logged in
-    if (!state.accessKey) {
-        window.location.href = 'login.html';
-        return;
-    }
-    
     state.notifications = [];
     renderAll();
 
@@ -387,3 +387,8 @@ function renderAll() {
         chrome.tabs.create({ url: state.hubApi });
     });
 })();
+
+
+
+
+
