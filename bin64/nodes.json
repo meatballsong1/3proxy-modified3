@@ -52,5 +52,22 @@
     "addedAt": "2026-03-28T02:42:12.439Z",
     "connections": 0,
     "hostname": "vpn-node-chicago-node"
+  }, 
+  "node_1776633712992": {
+    "id": "node_1776633712992",
+    "name": "Iowa Node",
+    "region": "Des Moines, IA",
+    "tailscaleIp": null,
+    "tailscaleId": null,
+    "enabled": true,
+    "offlineReason": null,
+    "maintenance": false,
+    "maintenanceReason": null,
+    "comingSoon": true,
+    "comingReason": "Launching soon",
+    "online": false,
+    "lastSeen": null,
+    "addedAt": "2026-04-19T21:21:52.992Z",
+    "connections": 0
   }
 }
