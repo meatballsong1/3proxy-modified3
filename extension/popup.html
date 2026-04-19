@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>ProxyHub</title>
+<title>proxy hub</title>
 <style>
   :root {
     --bg:            #f5f3ff;
@@ -323,6 +323,7 @@
   }
   .badge-maint { background: var(--warning-soft); color: var(--warning); }
   .badge-off   { background: var(--danger-soft);  color: var(--danger); }
+  .badge-coming { background: rgba(34,211,238,.15); color: #22d3ee; border-radius: 10px; }
 
   .node-tooltip {
     position: absolute;
@@ -344,7 +345,7 @@
   .node-tooltip::after {
     content: '';
     position: absolute;
-    top: 100%;
+    bottom: -5px;
     left: 50%;
     transform: translateX(-50%);
     border: 5px solid transparent;
@@ -352,6 +353,7 @@
   }
   .item:hover .node-tooltip {
     opacity: 1;
+    pointer-events: auto;
   }
 
   .footer {
@@ -507,7 +509,7 @@
 
 <div id="loginOverlay">
   <div class="login-modal">
-    <div class="login-title">ProxyHub</div>
+    <div class="login-title">proxy hub</div>
     <div class="login-subtitle">Enter your access token</div>
     <form id="loginForm" onsubmit="handleLogin(event)">
       <div class="login-form-group">
@@ -533,7 +535,7 @@
     </svg>
   </div>
   <div class="header-text">
-    <h1>ProxyHub</h1>
+    <h1>proxy hub</h1>
     <div class="header-sub" id="hubHost">vpn.oofbomb.xyz</div>
     <div class="hub-status" id="hubStatus">
       <span class="hub-status-dot"></span>

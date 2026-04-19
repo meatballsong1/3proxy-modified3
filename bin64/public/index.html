@@ -306,10 +306,15 @@ td { padding: 9px 12px; font-size: 13px; }
 .ndot.on   { background: var(--green); box-shadow: 0 0 0 3px rgba(16,185,129,0.2); animation: pdot 2s infinite; }
 .ndot.off  { background: var(--text3); }
 .ndot.maint { background: var(--yellow); box-shadow: 0 0 0 3px rgba(245,158,11,0.2); animation: maint-pulse 2s infinite; }
+.ndot.coming { background: #22d3ee; box-shadow: 0 0 0 3px rgba(34,211,238,0.2); animation: coming-pulse 2s infinite; }
 .ndot.dead { background: var(--red); }
 @keyframes maint-pulse {
   0%,100%{ box-shadow: 0 0 0 0 rgba(245,158,11,0.4); }
   60%    { box-shadow: 0 0 0 5px rgba(245,158,11,0); }
+}
+@keyframes coming-pulse {
+  0%,100%{ box-shadow: 0 0 0 0 rgba(34,211,238,0.4); }
+  60%    { box-shadow: 0 0 0 5px rgba(34,211,238,0); }
 }
 
 .nc-info { flex: 1; min-width: 0; }
@@ -327,6 +332,7 @@ td { padding: 9px 12px; font-size: 13px; }
 .badge-yellow { background: var(--yellowg); color: var(--yellow); border: 1px solid rgba(245,158,11,0.2); }
 .badge-blue   { background: var(--accentg); color: var(--accent2); border: 1px solid rgba(59,130,246,0.2); }
 .badge-green  { background: var(--greeng); color: var(--green); border: 1px solid rgba(16,185,129,0.2); }
+.badge-cyan   { background: rgba(34,211,238,0.15); color: #22d3ee; border: 1px solid rgba(34,211,238,0.2); }
 
 /* ── TOGGLE PILL ─────────────────────────── */
 .pill {
@@ -934,6 +940,15 @@ td { padding: 9px 12px; font-size: 13px; }
     </div>
     <div class="flabel">Maintenance Reason <span style="color:var(--text3);font-weight:400">(yellow in extension)</span></div>
     <div class="iw" style="margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><input type="text" id="nodeEditMaintReason" placeholder="e.g. Kernel reboot, back in 10min"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 12px;background:rgba(34,211,238,0.08);border:1px solid rgba(34,211,238,0.2);border-radius:9px;margin-bottom:12px">
+      <div>
+        <div style="font-size:12.5px;font-weight:800;color:#22d3ee">⏳ Coming Soon Mode</div>
+        <div id="nodeEditComingLbl" style="font-size:11px;color:var(--text3);margin-top:1px">Off</div>
+      </div>
+      <button class="pill" id="nodeEditComingPill" onclick="toggleNodeComingPill()"></button>
+    </div>
+    <div class="flabel">Coming Soon Reason <span style="color:var(--text3);font-weight:400">(cyan in extension)</span></div>
+    <div class="iw" style="margin-bottom:12px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg><input type="text" id="nodeEditComingReason" placeholder="e.g. Launching beta soon, stay tuned!"></div>
     <div class="flabel">Offline Reason <span style="color:var(--text3);font-weight:400">(shown when disabled)</span></div>
     <div class="iw" style="margin-bottom:16px"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg><input type="text" id="nodeEditOfflineReason" placeholder="e.g. Down for maintenance"></div>
     <div style="display:flex;gap:7px;justify-content:flex-end">
@@ -1265,25 +1280,29 @@ function renderNodes() {
   if (!nodesData.length) { el.innerHTML=`<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">No nodes yet</div>`; return; }
   el.innerHTML='';
   nodesData.forEach(node=>{
-    const isMaint    = node.maintenance||false;
-    const isDisabled = !node.enabled;
-    const dotClass   = isDisabled ? 'dead' : isMaint ? 'maint' : node.online ? 'on' : 'off';
-    const portBadge  = node.assignedPort ? `<span class="badge badge-blue">:${node.assignedPort}</span>` : '';
-    const maintBadge = isMaint ? `<span class="badge badge-yellow">MAINT</span>` : '';
-    const offBadge   = isDisabled&&!isMaint ? `<span class="badge badge-red">OFFLINE</span>` : '';
-    const reasonTxt  = (isDisabled&&node.offlineReason) ? `<div class="nc-reason" style="color:var(--red)">⚠ ${node.offlineReason}</div>`
-                     : (isMaint&&node.maintenanceReason) ? `<div class="nc-reason" style="color:var(--yellow)">🔧 ${node.maintenanceReason}</div>` : '';
-    const lastSeen   = node.lastSeen ? ' · '+timeAgo(node.lastSeen) : '';
-    const statusTxt  = isDisabled ? 'Offline — Refusing to respond'
-                     : isMaint   ? 'Maintenance'
-                     : node.online ? 'Online' : 'Offline — Refusing to respond';
+    const isMaint      = node.maintenance||false;
+    const isComingSoon = node.comingSoon||false;
+    const isDisabled   = !node.enabled;
+    const dotClass     = isDisabled ? 'dead' : isMaint ? 'maint' : isComingSoon ? 'coming' : node.online ? 'on' : 'off';
+    const portBadge    = node.assignedPort ? `<span class="badge badge-blue">:${node.assignedPort}</span>` : '';
+    const maintBadge   = isMaint ? `<span class="badge badge-yellow">MAINT</span>` : '';
+    const comingBadge  = isComingSoon ? `<span class="badge badge-cyan">COMING SOON</span>` : '';
+    const offBadge     = isDisabled&&!isMaint&&!isComingSoon ? `<span class="badge badge-red">OFFLINE</span>` : '';
+    const reasonTxt    = (isDisabled&&node.offlineReason) ? `<div class="nc-reason" style="color:var(--red)">⚠ ${node.offlineReason}</div>`
+                       : (isMaint&&node.maintenanceReason) ? `<div class="nc-reason" style="color:var(--yellow)">🔧 ${node.maintenanceReason}</div>`
+                       : (isComingSoon&&node.comingReason) ? `<div class="nc-reason" style="color:#22d3ee">⏳ ${node.comingReason}</div>` : '';
+    const lastSeen    = node.lastSeen ? ' · '+timeAgo(node.lastSeen) : '';
+    const statusTxt   = isDisabled ? 'Offline — Refusing to respond'
+                       : isMaint   ? 'Maintenance'
+                       : isComingSoon ? 'Coming Soon'
+                       : node.online ? 'Online' : 'Offline — Refusing to respond';
 
     const d = document.createElement('div');
     d.className = 'nc' + (isDisabled?' disabled':'');
     d.innerHTML = `
       <div class="ndot ${dotClass}"></div>
       <div class="nc-info">
-        <div class="nc-name">${node.name} ${portBadge}${maintBadge}${offBadge}</div>
+        <div class="nc-name">${node.name} ${portBadge}${maintBadge}${comingBadge}${offBadge}</div>
         <div class="nc-meta">${node.tailscaleIp||'No TS IP'} · ${statusTxt}${lastSeen}</div>
         ${reasonTxt}
       </div>
@@ -1326,9 +1345,13 @@ function openNodeEdit(nodeId) {
   document.getElementById('nodeEditId').value = nodeId;
   document.getElementById('nodeEditOfflineReason').value = node.offlineReason||'';
   document.getElementById('nodeEditMaintReason').value   = node.maintenanceReason||'';
+  document.getElementById('nodeEditComingReason').value  = node.comingReason||'';
   const mPill = document.getElementById('nodeEditMaintPill');
   mPill.classList.toggle('on', !!node.maintenance);
   document.getElementById('nodeEditMaintLbl').textContent = node.maintenance ? 'On — node shows yellow in extension' : 'Off';
+  const cPill = document.getElementById('nodeEditComingPill');
+  cPill.classList.toggle('on', !!node.comingSoon);
+  document.getElementById('nodeEditComingLbl').textContent = node.comingSoon ? 'On — node shows cyan in extension' : 'Off';
   openModal('nodeEditModal');
 }
 
@@ -1338,12 +1361,20 @@ function toggleNodeMaintPill() {
   document.getElementById('nodeEditMaintLbl').textContent = p.classList.contains('on') ? 'On — node shows yellow in extension' : 'Off';
 }
 
+function toggleNodeComingPill() {
+  const p = document.getElementById('nodeEditComingPill');
+  p.classList.toggle('on');
+  document.getElementById('nodeEditComingLbl').textContent = p.classList.contains('on') ? 'On — node shows cyan in extension' : 'Off';
+}
+
 async function saveNodeEdit() {
   const id = document.getElementById('nodeEditId').value;
   const offlineReason     = document.getElementById('nodeEditOfflineReason').value.trim()||null;
   const maintenanceReason = document.getElementById('nodeEditMaintReason').value.trim()||null;
+  const comingReason      = document.getElementById('nodeEditComingReason').value.trim()||null;
   const maintenance       = document.getElementById('nodeEditMaintPill').classList.contains('on');
-  const r = await fetch(`/nodes/${id}`,{method:'PATCH',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({offlineReason,maintenanceReason,maintenance})}).catch(()=>null);
+  const comingSoon        = document.getElementById('nodeEditComingPill').classList.contains('on');
+  const r = await fetch(`/nodes/${id}`,{method:'PATCH',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({offlineReason,maintenanceReason,maintenance,comingReason,comingSoon})}).catch(()=>null);
   if (r?.ok) { toast('Node updated','success'); closeModal('nodeEditModal'); fetchNodes(); }
   else toast('Failed','error');
 }
@@ -1519,14 +1550,14 @@ function renderKeys() {
   const el = document.getElementById('keysTableWrap');
   
   if (!entries.length) {
-    el.innerHTML = `<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">No access keys yet. Create one to allow extension access.</div>`;
+    el.innerHTML = `<div style="color:var(--text3);font-size:13px;text-align:center;padding:30px">No access keys yet. Create one to allow extension access.</div>`;
     return;
   }
   
   const getStatus = (key) => {
-    if (!key.enabled) return { class: 'badge-off', text: 'disabled' };
-    if (key.expires && new Date(key.expires) < new Date()) return { class: 'badge-warn', text: 'expired' };
-    return { class: 'badge-ok', text: 'active' };
+    if (!key.enabled) return { class: 'badge-off', text: 'disabled', icon: '×' };
+    if (key.expires && new Date(key.expires) < new Date()) return { class: 'badge-warn', text: 'expired', icon: '⚠' };
+    return { class: 'badge-ok', text: 'active', icon: '✓' };
   };
   
   const formatDate = (iso) => {
@@ -1537,42 +1568,30 @@ function renderKeys() {
   const html = entries.map(([id, key]) => {
     const status = getStatus(key);
     return `
-      <div class="trow">
-        <div class="tcell" style="flex:2">
-          <code style="font-family:var(--mono);font-size:13px;background:var(--s2);padding:4px 8px;border-radius:6px">${key.key}</code>
+      <div style="border:1px solid var(--border);border-radius:9px;padding:14px;margin-bottom:10px;background:var(--s2);display:flex;align-items:center;justify-content:space-between;gap:14px;transition:all .2s">
+        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
+          <div style="flex-shrink:0;width:36px;height:36px;background:var(--accentg);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--accent);font-size:18px">🔑</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-family:var(--mono);font-size:12px;background:var(--s1);padding:8px 12px;border-radius:7px;border:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;line-height:1.5" onclick="navigator.clipboard.writeText('${key.key}');toast('Copied!','success')" title="Click to copy">${key.key}</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:5px">Created ${formatDate(key.created)}</div>
+          </div>
         </div>
-        <div class="tcell" style="flex:1">
-          <span class="badge ${status.class}">${status.text}</span>
-        </div>
-        <div class="tcell" style="flex:1;font-size:12px;color:var(--text2)">
-          ${formatDate(key.created)}
-        </div>
-        <div class="tcell" style="flex:1;font-size:12px;color:var(--text2)">
-          ${formatDate(key.expires)}
-        </div>
-        <div class="tcell" style="flex:0 0 auto;display:flex;gap:6px">
-          ${key.enabled 
-            ? `<button class="btn btn-ghost btn-xs" onclick="toggleKey('${id}', false)">Disable</button>`
-            : `<button class="btn btn-ghost btn-xs" onclick="toggleKey('${id}', true)">Enable</button>`
-          }
-          <button class="btn btn-danger btn-xs" onclick="deleteKey('${id}')">✕</button>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;min-width:fit-content">
+          <span class="badge ${status.class}" style="padding:6px 10px;border-radius:6px;font-size:11px;white-space:nowrap">${status.icon} ${status.text}</span>
+          ${key.expires ? `<div style="font-size:11px;color:var(--text2);white-space:nowrap\">Exp: ${formatDate(key.expires)}</div>` : '<div style="font-size:11px;color:var(--text2)">Never expires</div>'}
+          <div style="display:flex;gap:5px">
+            ${key.enabled 
+              ? `<button onclick="toggleKey('${id}', false)" style="padding:6px 11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px;transition:all .15s;font-weight:500">Disable</button>`
+              : `<button onclick="toggleKey('${id}', true)" style="padding:6px 11px;border:1px solid var(--border);border-radius:6px;background:transparent;color:var(--text2);cursor:pointer;font-size:11px;transition:all .15s;font-weight:500">Enable</button>`
+            }
+            <button onclick="deleteKey('${id}')" style="padding:6px 11px;border:1px solid #ff4444;border-radius:6px;background:rgba(239,68,68,.08);color:#ef4444;cursor:pointer;font-size:11px;transition:all .15s;font-weight:500">Delete</button>
+          </div>
         </div>
       </div>
     `;
   }).join('');
   
-  el.innerHTML = `
-    <div class="ttbl" style="margin-top:16px">
-      <div class="thdr">
-        <div class="tcell" style="flex:2">Key</div>
-        <div class="tcell" style="flex:1">Status</div>
-        <div class="tcell" style="flex:1">Created</div>
-        <div class="tcell" style="flex:1">Expires</div>
-        <div class="tcell" style="flex:0 0 auto">Actions</div>
-      </div>
-      ${html}
-    </div>
-  `;
+  el.innerHTML = `<div style="margin-top:14px">${html}</div>`;
 }
 
 async function createRandomKey() {

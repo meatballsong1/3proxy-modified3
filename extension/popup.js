@@ -154,36 +154,42 @@ function renderNodes() {
     for (const n of sorted) {
         const profId = 'node_' + n.id;
         const active = state.activeProfile === profId;
-        const canUse = n.enabled && !n.maintenance;
+        const isComingSoon = n.comingSoon || n.coming_soon;
+        const canUse = n.enabled && !n.maintenance && !isComingSoon;
 
-        const item = el('div', 'item' + (active ? ' active' : '') + (canUse ? '' : ' disabled'));
+        const itemClass = 'item' + (active ? ' active' : '') + (canUse ? '' : ' disabled') + (isComingSoon ? ' coming-soon' : '');
+        const item = el('div', itemClass);
         const portNote = n.assignedPort
             ? `:${n.assignedPort}`
             : `:${state.defaultPort} (shared)`;
 
         let badge = '';
-        let tooltip = '';
+        let reason = '';
         
-        if (n.maintenance) {
+        if (isComingSoon) {
+            badge = `<span class="badge badge-coming">Coming Soon</span>`;
+            reason = n.comingReason || n.coming_reason || 'Available soon';
+        } else if (n.maintenance) {
             badge = `<span class="badge badge-maint">Maintenance</span>`;
-            if (n.reason) {
-                tooltip = `<div class="node-tooltip">${escapeHtml(n.reason)}</div>`;
-            }
+            reason = n.maintenanceReason || n.maintenance_reason || 'Under maintenance';
         } else if (!n.enabled) {
             badge = `<span class="badge badge-off">Offline</span>`;
-            if (n.reason) {
-                tooltip = `<div class="node-tooltip">${escapeHtml(n.reason)}</div>`;
-            }
+            reason = n.offlineReason || n.offline_reason || 'Node is offline';
         } else if (!n.online) {
             badge = `<span class="badge badge-off">Down</span>`;
+            reason = 'Connection timeout';
         }
 
         const pingHtml = n.latencyMs != null
             ? `<span class="item-ping ${pingClass(n.latencyMs)}"><span class="ping-dot"></span>${n.latencyMs}ms</span>`
             : (canUse ? `<span class="item-ping"><span class="ping-dot"></span>—</span>` : '');
 
+        const tooltipHtml = reason 
+            ? `<div class="node-tooltip" title="${escapeHtml(reason)}">${escapeHtml(reason)}</div>`
+            : '';
+
         item.innerHTML = `
-            ${tooltip}
+            ${tooltipHtml}
             <div class="item-icon">${ICONS.node}</div>
             <div class="item-main">
                 <div class="item-name">${escapeHtml(n.name)}${badge}</div>

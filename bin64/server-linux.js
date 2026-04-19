@@ -599,6 +599,7 @@ app.post('/nodes', (req, res) => {
         enabled: enabled!==false,
         offlineReason: offlineReason||null,
         maintenance: false, maintenanceReason: null,
+        comingSoon: false, comingReason: null,
         online: false, lastSeen: null,
         addedAt: new Date().toISOString(), connections: 0,
     };
@@ -613,6 +614,8 @@ app.patch('/nodes/:id', (req, res) => {
     if (req.body.offlineReason     !== undefined) node.offlineReason     = req.body.offlineReason || null;
     if (req.body.maintenance       !== undefined) node.maintenance       = req.body.maintenance;
     if (req.body.maintenanceReason !== undefined) node.maintenanceReason = req.body.maintenanceReason || null;
+    if (req.body.comingSoon        !== undefined) node.comingSoon        = req.body.comingSoon;
+    if (req.body.comingReason      !== undefined) node.comingReason      = req.body.comingReason || null;
     if (req.body.name)   node.name   = req.body.name;
     if (req.body.region) node.region = req.body.region;
     saveJson(NODES_FILE, nodeRegistry);
@@ -1141,15 +1144,17 @@ app.get('/ext/nodes', async (req, res) => {
         tailscaleIp:        n.tailscaleIp,
         enabled:            n.enabled !== false,
         maintenance:        n.maintenance || false,
-        offlineReason:      n.offlineReason     || null,
         maintenanceReason:  n.maintenanceReason || null,
+        comingSoon:         n.comingSoon || false,
+        comingReason:       n.comingReason || null,
+        offlineReason:      n.offlineReason     || null,
         // Which port to use for this node (for Omega/FoxyProxy users)
         assignedPort:       Object.entries(portRoutes).find(([,nid]) => nid === n.id)?.[0] || null,
     }));
 
-    // Only live-ping enabled, non-maintenance nodes
+    // Only live-ping enabled, non-maintenance, non-coming-soon nodes
     const withPing = await Promise.all(allNodes.map(async n => {
-        if (!n.enabled || n.maintenance) return { ...n, latencyMs: null, online: false };
+        if (!n.enabled || n.maintenance || n.comingSoon) return { ...n, latencyMs: null, online: false };
         const ping = n.tailscaleIp ? await pingNode(n.tailscaleIp, 1080, 2000) : { latencyMs: null, online: false };
         return { ...n, latencyMs: ping.latencyMs, online: ping.online };
     }));

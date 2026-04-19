@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "ProxyHub",
+  "name": "proxy hub",
   "version": "2.0.0",
-  "description": "Route browser traffic through your private proxy hub. Pick a node, auto-switch, or direct — SOCKS5 routed via hub.oofbomb.xyz.",
+  "description": "Custom proxy management extension, faster than modern free VPNs.",
   "permissions": ["proxy", "storage", "notifications", "tabs", "alarms"],
   "host_permissions": ["<all_urls>"],
   "action": {
