@@ -352,6 +352,13 @@ function renderAll() {
         return;
     }
     state = r.state;
+    
+    // Check if logged in
+    if (!state.accessKey) {
+        window.location.href = 'login.html';
+        return;
+    }
+    
     state.notifications = [];
     renderAll();
 

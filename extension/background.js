@@ -20,6 +20,7 @@ const DEFAULTS = {
     autoSwitch:    { rules: [], fallback: 'auto' },
     nodes:         [],
     lastFetch:     0,
+    accessKey:     null,                       // Extension access key
 };
 
 const store = {
@@ -51,10 +52,26 @@ chrome.alarms?.create?.('refresh-nodes', { periodInMinutes: 1 });
 chrome.alarms?.onAlarm.addListener(a => { if (a.name === 'refresh-nodes') refreshNodes(); });
 
 async function refreshNodes() {
-    const { hubApi } = await getState();
+    const { hubApi, accessKey } = await getState();
+    
+    if (!accessKey) {
+        console.warn('[ProxyHub] No access key found');
+        return { ok: false, error: 'Not logged in' };
+    }
+    
     try {
-        const res = await fetch(`${hubApi.replace(/\/$/, '')}/ext/nodes`, { cache: 'no-store' });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const res = await fetch(`${hubApi.replace(/\/$/, '')}/ext/nodes`, { 
+            cache: 'no-store',
+            headers: { 'X-Access-Key': accessKey }
+        });
+        if (!res.ok) {
+            if (res.status === 401) {
+                // Key is invalid, clear it
+                await store.set({ accessKey: null });
+                return { ok: false, error: 'Invalid access key' };
+            }
+            throw new Error(`HTTP ${res.status}`);
+        }
         const data = await res.json();
         console.log('[ProxyHub] Raw node data:', data.nodes);
         const nodes = (data.nodes || []).map(n => ({

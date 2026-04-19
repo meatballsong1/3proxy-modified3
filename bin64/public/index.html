@@ -719,6 +719,17 @@ td { padding: 9px 12px; font-size: 13px; }
     </div>
   </div>
 
+  <!-- Access Keys -->
+  <div class="card">
+    <div class="card-hdr">
+      <div><div class="card-title">Access Keys</div><div class="card-sub">Extension authentication tokens</div></div>
+      <button class="btn btn-accent btn-sm" onclick="createRandomKey()">+ Random Key</button>
+    </div>
+    <div id="keysTableWrap">
+      <div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">Loading keys…</div>
+    </div>
+  </div>
+
   <!-- Speed Test -->
   <div class="card">
     <div class="card-hdr">
@@ -1050,10 +1061,10 @@ function doLogin(showToast) {
   document.getElementById('loginPage').style.display = 'none';
   document.getElementById('dashboard').style.display = 'block';
   fetchWhitelist(); updateConnections(); fetchNodes();
-  fetchClients(); fetchStats(); loadAuthState();
+  fetchClients(); fetchKeys(); fetchStats(); loadAuthState();
   loadHotloop(); fetchLiveStats(); fetchPortRoutes();
   setInterval(updateConnections, 1000);
-  setInterval(()=>{ fetchNodes(); fetchClients(); }, 10000);
+  setInterval(()=>{ fetchNodes(); fetchClients(); fetchKeys(); }, 10000);
   setInterval(fetchStats, 3000);
   setInterval(fetchLiveStats, 3000);
   setInterval(fetchPortRoutes, 15000);
@@ -1487,6 +1498,108 @@ async function addClient() {
   const r=await fetch('/clients',{method:'POST',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({name,tailscaleId:tsId||null,defaultNode:defNode||null})}).catch(()=>null);
   if (r?.ok){ toast(`${name} added`,'success'); closeModal('addClientModal'); document.getElementById('clientNameIn').value=''; fetchClients(); }
   else toast('Failed','error');
+}
+
+/* ══════════════════════════════════════════════
+   ACCESS KEYS
+══════════════════════════════════════════════ */
+let keysData = {};
+
+async function fetchKeys() {
+  if (!loggedIn) return;
+  const r = await fetch('/keys',{headers:AH}).catch(()=>null);
+  if (!r?.ok) return;
+  const {keys} = await r.json();
+  keysData = keys||{};
+  renderKeys();
+}
+
+function renderKeys() {
+  const entries = Object.entries(keysData);
+  const el = document.getElementById('keysTableWrap');
+  
+  if (!entries.length) {
+    el.innerHTML = `<div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">No access keys yet. Create one to allow extension access.</div>`;
+    return;
+  }
+  
+  const getStatus = (key) => {
+    if (!key.enabled) return { class: 'badge-off', text: 'disabled' };
+    if (key.expires && new Date(key.expires) < new Date()) return { class: 'badge-warn', text: 'expired' };
+    return { class: 'badge-ok', text: 'active' };
+  };
+  
+  const formatDate = (iso) => {
+    if (!iso) return 'never';
+    return new Date(iso).toLocaleString();
+  };
+  
+  const html = entries.map(([id, key]) => {
+    const status = getStatus(key);
+    return `
+      <div class="trow">
+        <div class="tcell" style="flex:2">
+          <code style="font-family:var(--mono);font-size:13px;background:var(--s2);padding:4px 8px;border-radius:6px">${key.key}</code>
+        </div>
+        <div class="tcell" style="flex:1">
+          <span class="badge ${status.class}">${status.text}</span>
+        </div>
+        <div class="tcell" style="flex:1;font-size:12px;color:var(--text2)">
+          ${formatDate(key.created)}
+        </div>
+        <div class="tcell" style="flex:1;font-size:12px;color:var(--text2)">
+          ${formatDate(key.expires)}
+        </div>
+        <div class="tcell" style="flex:0 0 auto;display:flex;gap:6px">
+          ${key.enabled 
+            ? `<button class="btn btn-ghost btn-xs" onclick="toggleKey('${id}', false)">Disable</button>`
+            : `<button class="btn btn-ghost btn-xs" onclick="toggleKey('${id}', true)">Enable</button>`
+          }
+          <button class="btn btn-danger btn-xs" onclick="deleteKey('${id}')">✕</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+  
+  el.innerHTML = `
+    <div class="ttbl" style="margin-top:16px">
+      <div class="thdr">
+        <div class="tcell" style="flex:2">Key</div>
+        <div class="tcell" style="flex:1">Status</div>
+        <div class="tcell" style="flex:1">Created</div>
+        <div class="tcell" style="flex:1">Expires</div>
+        <div class="tcell" style="flex:0 0 auto">Actions</div>
+      </div>
+      ${html}
+    </div>
+  `;
+}
+
+async function createRandomKey() {
+  const r = await fetch('/keys', {method:'POST',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({})}).catch(()=>null);
+  if (r?.ok) {
+    toast('Key created', 'success');
+    fetchKeys();
+  } else {
+    toast('Failed to create key', 'error');
+  }
+}
+
+async function toggleKey(id, enabled) {
+  const r = await fetch(`/keys/${id}`, {method:'PUT',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({enabled})}).catch(()=>null);
+  if (r?.ok) {
+    toast(enabled ? 'Key enabled' : 'Key disabled', enabled ? 'success' : 'warn');
+    fetchKeys();
+  }
+}
+
+async function deleteKey(id) {
+  if (!confirm('Delete this access key? Extensions using it will stop working.')) return;
+  const r = await fetch(`/keys/${id}`, {method:'DELETE',headers:AH}).catch(()=>null);
+  if (r?.ok) {
+    toast('Key deleted', 'warn');
+    fetchKeys();
+  }
 }
 
 /* ══════════════════════════════════════════════
