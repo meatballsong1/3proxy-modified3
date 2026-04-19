@@ -16,7 +16,7 @@ const PASS  = 'malaop0989';
 const TOKEN = Buffer.from(`${USER}:${PASS}`).toString('base64');
 
 app.use((req, res, next) => {
-    if (req.method === 'GET' && (req.path === '/' || /\.(html|js|css|ico|png|woff2?)$/.test(req.path)))
+    if (req.method === 'GET' && (req.path === '/' || req.path === '/health' || /\.(html|js|css|ico|png|woff2?)$/.test(req.path)))
         return next();
     if (req.path.startsWith('/ext/') || req.path === '/speedtest')
         return next();
@@ -527,6 +527,13 @@ app.get('/ext/ping', (req, res) => {
     res.setHeader('Access-Control-Allow-Origin','*');
     res.setHeader('Cache-Control','no-store');
     res.json({ pong: true, ts: Date.now() });
+});
+
+// ─── HEALTH CHECK ────────────────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin','*');
+    res.setHeader('Cache-Control','no-store');
+    res.json({ status: 'ok', ts: Date.now(), uptime: process.uptime() });
 });
 
 // ─── HOTLOOP / LOAD BALANCER ─────────────────────────────────────────────────
