@@ -22,6 +22,12 @@ app.use((req, res, next) => {
         return next();
     if (req.path === '/keys/validate' && req.method === 'POST')
         return next();
+    // /terminal accepts an auth token in the query string (popup window can't send headers)
+    if (req.path === '/terminal' && req.method === 'GET') {
+        const qt = (req.query.token || '').replace(/^(Bearer|Basic)\s+/i, '');
+        // Accept either the base64 token or raw "user:pass"
+        if (qt === TOKEN || qt === `${USER}:${PASS}` || Buffer.from(qt).toString('base64') === TOKEN) return next();
+    }
     const auth  = req.headers.authorization || '';
     const token = auth.replace(/^(Bearer|Basic)\s+/i, '');
     if (token === TOKEN) return next();
@@ -42,7 +48,10 @@ const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 const HOTLOOP_FILE  = path.join(__dirname, 'hotloop.json');
 const LOG_FILE      = path.join(__dirname, '3proxy.log');
 const SERVER_FILE   = __filename;
-const KEYS_FILE     = path.join(__dirname, 'keys.json');
+const HUB_TOKEN_FILE = path.join(__dirname, 'hub-token');  // shared secret w/ node agents
+const NOTIFS_FILE    = path.join(__dirname, 'notifications.json');
+const KEYS_FILE      = path.join(__dirname, 'keys.json');
+const AGENT_PORT     = 9999;
 
 // ─── TAILSCALE ───────────────────────────────────────────────────────────────
 const TS_API_KEY = 'tskey-api-k9GpGN8ma221CNTRL-gYKsstC5M2QhTpXstyj33Qkpeqq5bgT62';
@@ -55,13 +64,32 @@ function saveJson(f, d) { fs.writeFileSync(f, JSON.stringify(d, null, 2)); }
 let activeConnections = new Set();
 let nodeRegistry      = loadJson(NODES_FILE, {});
 let clientRegistry    = loadJson(CLIENTS_FILE, {});
-let settings          = loadJson(SETTINGS_FILE, { ipAuthEnabled: true });
+let settings          = loadJson(SETTINGS_FILE, { ipAuthEnabled: true, dashAuthEnabled: true });
+if (settings.dashAuthEnabled === undefined) settings.dashAuthEnabled = true;
 let hotloop           = loadJson(HOTLOOP_FILE, {
     enabled: false, primaryNode: null, fallbackNode: null,
     primaryWeight: 900, threshold: 50, mode: 'weighted',
 });
 let tsDevices = [];
 let clientStats = {};
+let notifications = loadJson(NOTIFS_FILE, []);   // [{ level, msg, ts }]
+
+// ─── HUB TOKEN (shared secret for node agents) ───────────────────────────────
+let HUB_TOKEN_VALUE = '';
+try { HUB_TOKEN_VALUE = fs.readFileSync(HUB_TOKEN_FILE, 'utf8').trim(); } catch {}
+if (!HUB_TOKEN_VALUE || HUB_TOKEN_VALUE.length < 32) {
+    HUB_TOKEN_VALUE = crypto.randomBytes(32).toString('hex');
+    try { fs.writeFileSync(HUB_TOKEN_FILE, HUB_TOKEN_VALUE, { mode: 0o600 }); }
+    catch (e) { console.warn('[hub-token] could not write token file:', e.message); }
+    console.log(`[hub-token] generated new token → ${HUB_TOKEN_FILE}`);
+}
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+function addNotif(level, msg) {
+    notifications.unshift({ level, msg, ts: Date.now() });
+    if (notifications.length > 200) notifications.length = 200;
+    try { saveJson(NOTIFS_FILE, notifications); } catch {}
+}
 
 // ─── ACCESS KEYS ─────────────────────────────────────────────────────────────
 let accessKeys = loadJson(KEYS_FILE, {});
@@ -90,6 +118,36 @@ function saveKeys() {
     try { saveJson(KEYS_FILE, accessKeys); } catch (e) {
         console.error('[keys] save failed:', e.message);
     }
+}
+
+// ─── NODE AGENT CLIENT ───────────────────────────────────────────────────────
+// Talks to each node's proxyhub-agent over Tailscale. No public ports used.
+function callNodeAgent(ip, apiPath, { method = 'GET', body = null, timeout = 8000 } = {}) {
+    return new Promise((resolve, reject) => {
+        const data = body == null ? null : (typeof body === 'string' ? body : JSON.stringify(body));
+        const req = http.request({
+            host: ip, port: AGENT_PORT, path: apiPath, method,
+            headers: {
+                'X-Hub-Token':  HUB_TOKEN_VALUE,
+                'Content-Type': 'application/json',
+                ...(data != null ? { 'Content-Length': Buffer.byteLength(data) } : {}),
+            },
+            timeout,
+        }, (res) => {
+            let buf = '';
+            res.on('data', c => buf += c);
+            res.on('end', () => {
+                const ct = (res.headers['content-type'] || '').toLowerCase();
+                let parsed = buf;
+                if (ct.includes('application/json')) { try { parsed = JSON.parse(buf); } catch {} }
+                resolve({ status: res.statusCode, body: parsed, raw: buf });
+            });
+        });
+        req.on('error',   err => reject(err));
+        req.on('timeout', ()  => { req.destroy(new Error('agent timeout')); });
+        if (data != null) req.write(data);
+        req.end();
+    });
 }
 
 // ─── PORT → NODE ROUTING ─────────────────────────────────────────────────────
@@ -304,7 +362,23 @@ app.post('/settings/auth', (req, res) => {
     settings.ipAuthEnabled = req.body.enabled;
     saveJson(SETTINGS_FILE, settings);
     syncWhitelist(getActualWhitelist());
+    addNotif('info', `IP auth ${settings.ipAuthEnabled ? 'enabled' : 'disabled'}`);
     res.json({ ok: true, ipAuthEnabled: settings.ipAuthEnabled });
+});
+
+// Dashboard auth toggle — stores the flag for UI display.
+// NOTE: the middleware at the top always requires basic auth for safety.
+// Toggling this to "disabled" is a display-only preference for now; if you
+// truly want open access you'd also have to loosen the middleware.
+app.get('/settings/dash-auth', (req, res) => {
+    res.json({ enabled: settings.dashAuthEnabled !== false });
+});
+
+app.post('/settings/dash-auth', (req, res) => {
+    settings.dashAuthEnabled = !!req.body.enabled;
+    saveJson(SETTINGS_FILE, settings);
+    addNotif('warn', `Dashboard auth flag set to: ${settings.dashAuthEnabled ? 'enabled' : 'disabled'}`);
+    res.json({ ok: true, enabled: settings.dashAuthEnabled });
 });
 
 // ─── PORT ROUTES API ─────────────────────────────────────────────────────────
@@ -348,7 +422,25 @@ app.delete('/port-routes/:port', (req, res) => {
     settings.portRoutes = portRoutes;
     saveJson(SETTINGS_FILE, settings);
     stopPortProxy(port);
+    addNotif('info', `Port route ${port} removed`);
     res.json({ ok: true });
+});
+
+// Restart a single port-route 3proxy listener on the hub
+app.post('/port-routes/:port/restart', (req, res) => {
+    const port   = req.params.port;
+    const nodeId = portRoutes[port];
+    if (!nodeId) return res.status(404).json({ error: 'Port route not found' });
+    const node = nodeRegistry[nodeId];
+    if (!node || !node.tailscaleIp) return res.status(404).json({ error: 'Node not found or no Tailscale IP' });
+    try {
+        startPortProxy(port, node);   // also stops the existing one
+        addNotif('info', `Port ${port} (${node.name}) restarted`);
+        res.json({ ok: true, msg: `Port ${port} restarted` });
+    } catch (e) {
+        addNotif('error', `Port ${port} restart failed: ${e.message}`);
+        res.status(500).json({ error: e.message });
+    }
 });
 
 // ─── WHITELIST ───────────────────────────────────────────────────────────────
@@ -608,6 +700,417 @@ app.get('/stats', (req, res) => {
     res.json({ totalConnections: activeConnections.size, activeClients: Object.keys(clientStats).length, totalBytesIn, totalBytesOut, nodes, clients: Object.values(clientRegistry).filter(c => c.online).length, hotloop, portRoutes, timestamp: Date.now() });
 });
 
+// ─── NODE AGENT CONTROL ──────────────────────────────────────────────────────
+// These endpoints forward to each node's proxyhub-agent (port 9999 over Tailscale).
+// The frontend calls /nodes/:id/restart-proxy — this wires it up to the agent.
+
+function resolveNodeIp(id) {
+    const node = nodeRegistry[id];
+    if (!node)              return { err: 'Node not found', status: 404 };
+    if (!node.tailscaleIp)  return { err: 'Node has no Tailscale IP', status: 400 };
+    return { node };
+}
+
+async function nodeAgentAction(id, agentPath, method = 'POST', timeout = 8000) {
+    const r = resolveNodeIp(id);
+    if (r.err) return { status: r.status, body: { error: r.err } };
+    try {
+        const out = await callNodeAgent(r.node.tailscaleIp, agentPath, { method, timeout });
+        return out;
+    } catch (e) {
+        return { status: 502, body: { error: 'agent unreachable', detail: e.message } };
+    }
+}
+
+// Restart 3proxy on a node  (frontend calls this)
+app.post('/nodes/:id/restart-proxy', async (req, res) => {
+    const node = nodeRegistry[req.params.id];
+    const out  = await nodeAgentAction(req.params.id, '/restart', 'POST', 15000);
+    if (out.status === 200) {
+        addNotif('info', `${node?.name || req.params.id}: 3proxy restarted`);
+        res.json({ ok: true, msg: `${node?.name || 'Node'} restarted`, ...out.body });
+    } else {
+        addNotif('error', `${node?.name || req.params.id}: restart failed (${out.status})`);
+        res.status(out.status).json(out.body);
+    }
+});
+
+app.post('/nodes/:id/start-proxy', async (req, res) => {
+    const node = nodeRegistry[req.params.id];
+    const out  = await nodeAgentAction(req.params.id, '/start', 'POST');
+    if (out.status === 200) addNotif('info', `${node?.name || req.params.id}: 3proxy started`);
+    else                    addNotif('error', `${node?.name || req.params.id}: start failed (${out.status})`);
+    res.status(out.status).json(out.body);
+});
+
+app.post('/nodes/:id/stop-proxy', async (req, res) => {
+    const node = nodeRegistry[req.params.id];
+    const out  = await nodeAgentAction(req.params.id, '/stop', 'POST');
+    if (out.status === 200) addNotif('warn', `${node?.name || req.params.id}: 3proxy stopped`);
+    else                    addNotif('error', `${node?.name || req.params.id}: stop failed (${out.status})`);
+    res.status(out.status).json(out.body);
+});
+
+app.get('/nodes/:id/agent-status', async (req, res) => {
+    const out = await nodeAgentAction(req.params.id, '/status', 'GET', 4000);
+    res.status(out.status).json(out.body);
+});
+
+app.get('/nodes/:id/logs', async (req, res) => {
+    const r = resolveNodeIp(req.params.id);
+    if (r.err) return res.status(r.status).json({ error: r.err });
+    const n = Math.min(parseInt(req.query.n, 10) || 200, 2000);
+    try {
+        const out = await callNodeAgent(r.node.tailscaleIp, `/logs?n=${n}`, { method: 'GET', timeout: 10000 });
+        res.status(out.status).type('text/plain').send(out.raw || out.body || '');
+    } catch (e) {
+        res.status(502).json({ error: 'agent unreachable', detail: e.message });
+    }
+});
+
+app.post('/nodes/:id/reboot', async (req, res) => {
+    const node = nodeRegistry[req.params.id];
+    const out  = await nodeAgentAction(req.params.id, '/reboot', 'POST');
+    if (out.status === 200) addNotif('warn', `${node?.name || req.params.id}: reboot scheduled`);
+    res.status(out.status).json(out.body);
+});
+
+// Test if the proxy works by fetching a URL through the node
+app.get('/nodes/:id/fetch-test', async (req, res) => {
+    const r = resolveNodeIp(req.params.id);
+    if (r.err) return res.status(r.status).json({ error: r.err });
+    
+    const targetUrl = req.query.url || 'http://api.ipify.org?format=json';
+    const node = r.node;
+    
+    // Use curl with SOCKS5 proxy to test the connection
+    const cmd = `curl -x socks5://${node.tailscaleIp}:1080 -m 10 -s "${targetUrl}"`;
+    
+    exec(cmd, { timeout: 12000 }, (err, stdout, stderr) => {
+        if (err) {
+            return res.status(500).json({
+                ok: false,
+                error: 'Fetch failed',
+                detail: stderr || err.message,
+                node: node.name,
+                nodeIp: node.tailscaleIp,
+                targetUrl,
+            });
+        }
+        
+        let parsed = stdout;
+        try { parsed = JSON.parse(stdout); } catch {}
+        
+        res.json({
+            ok: true,
+            node: node.name,
+            nodeIp: node.tailscaleIp,
+            targetUrl,
+            response: parsed,
+            exitIp: parsed.ip || null,
+        });
+    });
+});
+
+// Bulk: restart 3proxy on every node in parallel
+app.post('/nodes/restart-all-proxies', async (req, res) => {
+    const results = {};
+    await Promise.all(Object.values(nodeRegistry).map(async n => {
+        if (!n.tailscaleIp) { results[n.id] = { ok: false, error: 'no ip' }; return; }
+        try {
+            const r = await callNodeAgent(n.tailscaleIp, '/restart', { method: 'POST', timeout: 15000 });
+            results[n.id] = { ok: r.status === 200, status: r.status };
+        } catch (e) {
+            results[n.id] = { ok: false, error: e.message };
+        }
+    }));
+    const okCount = Object.values(results).filter(r => r.ok).length;
+    addNotif('info', `Bulk restart: ${okCount}/${Object.keys(results).length} nodes ok`);
+    res.json(results);
+});
+
+// Hub token — read by install-node.sh to bake into each agent
+app.get('/agent/token', (req, res) => {
+    res.type('text/plain').send(HUB_TOKEN_VALUE);
+});
+
+// ─── PORT HEALTH MONITORING ──────────────────────────────────────────────────
+// Periodically checks if required ports are actually listening.
+// Adds notifications when ports that should be open are closed.
+
+async function checkPortListening(port) {
+    return new Promise(resolve => {
+        const sock = new net.Socket();
+        const timeout = setTimeout(() => {
+            sock.destroy();
+            resolve(false);
+        }, 1000);
+
+        sock.on('connect', () => {
+            clearTimeout(timeout);
+            sock.end();
+            resolve(true);
+        });
+
+        sock.on('error', () => {
+            clearTimeout(timeout);
+            resolve(false);
+        });
+
+        sock.connect(port, '127.0.0.1');
+    });
+}
+
+let lastPortHealthCheck = {};
+
+async function checkPortHealth() {
+    const expectedPorts = new Set();
+    
+    // Port 1080 should always be listening (main SOCKS5)
+    expectedPorts.add(1080);
+    
+    // Port 3128 should be listening (HTTP proxy)
+    expectedPorts.add(3128);
+    
+    // All configured port routes should be listening
+    Object.keys(portRoutes).forEach(port => expectedPorts.add(parseInt(port, 10)));
+    
+    for (const port of expectedPorts) {
+        const isListening = await checkPortListening(port);
+        const wasDown = lastPortHealthCheck[port] === false;
+        const isNowDown = !isListening;
+        
+        // Only notify on state changes to avoid spam
+        if (isNowDown && !wasDown) {
+            const portDesc = port === 1080 ? 'Main proxy (1080)' 
+                           : port === 3128 ? 'HTTP proxy (3128)'
+                           : `Port ${port}`;
+            const nodeInfo = portRoutes[port] 
+                ? ` → ${nodeRegistry[portRoutes[port]]?.name || portRoutes[port]}`
+                : '';
+            addNotif('error', `${portDesc}${nodeInfo} is not listening`);
+            console.error(`[PortHealth] ${portDesc}${nodeInfo} DOWN`);
+        } else if (isListening && wasDown) {
+            const portDesc = port === 1080 ? 'Main proxy (1080)' 
+                           : port === 3128 ? 'HTTP proxy (3128)'
+                           : `Port ${port}`;
+            addNotif('info', `${portDesc} is back online`);
+            console.log(`[PortHealth] ${portDesc} UP`);
+        }
+        
+        lastPortHealthCheck[port] = isListening;
+    }
+}
+
+// Run health check every 30 seconds
+setInterval(checkPortHealth, 30000);
+// Run first check after 5 seconds (let 3proxy start first)
+setTimeout(checkPortHealth, 5000);
+
+// ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+app.get('/notifications', (req, res) => {
+    res.json({ notifications });
+});
+
+app.delete('/notifications', (req, res) => {
+    notifications = [];
+    try { saveJson(NOTIFS_FILE, notifications); } catch {}
+    res.json({ ok: true });
+});
+
+// ─── TERMINAL / SSH PAGE ─────────────────────────────────────────────────────
+// Opened as a popup window by the dashboard. Since browsers can't directly
+// open an SSH session without a helper, this page shows the SSH command to
+// copy/run, plus quick action buttons that hit the node agent for
+// start/stop/restart and a live-tail of the node's 3proxy logs.
+
+app.get('/terminal', (req, res) => {
+    const nodeId = (req.query.node || '').trim();
+    const token  = (req.query.token || '').trim();
+
+    let node, targetName, targetIp, isHub = false;
+    if (nodeId === 'hub') {
+        isHub      = true;
+        targetName = 'Hub';
+        // Best-effort: grab the first tailscale IP if available
+        try {
+            const out  = require('child_process').execSync('tailscale ip -4', { timeout: 2000 }).toString().trim().split('\n')[0];
+            if (out.startsWith('100.')) targetIp = out;
+        } catch { targetIp = '(run `tailscale ip -4` on the hub)'; }
+    } else {
+        node = nodeRegistry[nodeId];
+        if (!node) return res.status(404).send(`<pre>Node not found: ${nodeId}</pre>`);
+        targetName = node.name;
+        targetIp   = node.tailscaleIp || '(no tailscale ip)';
+    }
+
+    // Make the client-side JS re-send the token with each fetch so the popup
+    // can call authenticated endpoints without the parent's Authorization header.
+    const safeTok = token.replace(/[^a-zA-Z0-9=:_-]/g, '');
+
+    res.setHeader('Content-Type', 'text/html');
+    res.end(`<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${escapeHtml(targetName)} · Console</title>
+<style>
+  :root {
+    --bg:#0f0f1e; --panel:#1a1a2e; --border:#2d2d44; --text:#e2e8f0; --muted:#94a3b8;
+    --accent:#8b5cf6; --accent2:#6366f1; --green:#10b981; --red:#ef4444; --yellow:#f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Segoe UI',sans-serif; font-size:13.5px; }
+  header { padding:14px 18px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; background:linear-gradient(90deg, rgba(139,92,246,.1), transparent); }
+  header .dot { width:10px; height:10px; border-radius:50%; background:var(--muted); box-shadow:0 0 0 3px rgba(148,163,184,.2); }
+  header .dot.on  { background:var(--green); box-shadow:0 0 0 3px rgba(16,185,129,.2); }
+  header .dot.off { background:var(--red);   box-shadow:0 0 0 3px rgba(239,68,68,.2); }
+  header h1 { margin:0; font-size:15px; font-weight:600; }
+  header .sub { color:var(--muted); font-size:11px; margin-top:2px; font-variant-numeric:tabular-nums; }
+  .wrap { padding:16px 18px; display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; }
+  .card h2 { margin:0 0 10px; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:0.08em; }
+  .ssh-line { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:12px; background:var(--bg); padding:9px 12px; border-radius:6px; border:1px solid var(--border); cursor:pointer; word-break:break-all; transition:border-color .15s; }
+  .ssh-line:hover { border-color:var(--accent); }
+  .ssh-label { font-size:10.5px; color:var(--muted); margin:10px 0 4px; text-transform:uppercase; letter-spacing:0.05em; font-weight:600; }
+  .btn-row { display:flex; gap:6px; flex-wrap:wrap; }
+  button { padding:7px 12px; font-size:12px; font-weight:600; border:1px solid var(--border); border-radius:6px; background:var(--bg); color:var(--text); cursor:pointer; font-family:inherit; transition:all .12s; }
+  button:hover { border-color:var(--accent); color:var(--accent); }
+  button.primary { background:linear-gradient(135deg,var(--accent),var(--accent2)); color:white; border-color:transparent; }
+  button.primary:hover { filter:brightness(1.1); color:white; }
+  button.danger:hover  { border-color:var(--red); color:var(--red); }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .logs { font-family:ui-monospace,'SF Mono',Menlo,monospace; font-size:10.5px; line-height:1.55; background:var(--bg); padding:10px; border-radius:6px; border:1px solid var(--border); height:320px; overflow:auto; white-space:pre-wrap; color:#c8c8d4; }
+  .full { grid-column: 1 / -1; }
+  .status-line { display:flex; gap:14px; font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; margin-bottom:8px; }
+  .status-line strong { color:var(--text); font-weight:600; }
+  .toast { position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px); opacity:0; background:var(--text); color:var(--bg); padding:9px 16px; border-radius:20px; font-size:12px; font-weight:500; transition:all .25s; pointer-events:none; }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+  a { color:var(--accent); }
+</style></head>
+<body>
+<header>
+  <div class="dot" id="dot"></div>
+  <div>
+    <h1>${escapeHtml(targetName)} Console</h1>
+    <div class="sub" id="sub">${escapeHtml(targetIp)}</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <h2>SSH access (over Tailscale)</h2>
+    <div class="ssh-label">Tailscale SSH</div>
+    <div class="ssh-line" data-copy="tailscale ssh root@${escapeHtml(targetIp)}">tailscale ssh root@${escapeHtml(targetIp)}</div>
+    <div class="ssh-label">Plain SSH</div>
+    <div class="ssh-line" data-copy="ssh root@${escapeHtml(targetIp)}">ssh root@${escapeHtml(targetIp)}</div>
+    <div style="color:var(--muted); font-size:10.5px; margin-top:10px; line-height:1.5;">
+      Click a line to copy. SSH only works from a machine that's on your tailnet.
+      Browsers can't open SSH directly — paste the command into your terminal.
+    </div>
+  </div>
+
+  ${isHub ? '' : `
+  <div class="card">
+    <h2>3proxy control</h2>
+    <div class="status-line">
+      <div><strong id="st-state">…</strong></div>
+      <div>host <strong id="st-host">—</strong></div>
+      <div>up <strong id="st-up">—</strong></div>
+      <div>load <strong id="st-load">—</strong></div>
+    </div>
+    <div class="btn-row">
+      <button class="primary" onclick="act('start-proxy')">Start</button>
+      <button class="primary" onclick="act('restart-proxy')">Restart</button>
+      <button class="danger"  onclick="act('stop-proxy')">Stop</button>
+      <button              onclick="loadStatus()">⟳ Refresh</button>
+    </div>
+  </div>
+
+  <div class="card full">
+    <h2>Recent 3proxy logs — <span style="color:var(--muted); font-weight:400;">auto-refreshing every 5s</span></h2>
+    <div class="logs" id="logs">Loading…</div>
+  </div>
+  `}
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOKEN  = ${JSON.stringify(safeTok)};
+const NODE   = ${JSON.stringify(nodeId)};
+const IS_HUB = ${JSON.stringify(isHub)};
+const AUTH   = 'Basic ' + (TOKEN.includes(':') ? btoa(TOKEN) : TOKEN);
+
+function toast(t) {
+  const el = document.getElementById('toast');
+  el.textContent = t;
+  el.classList.add('show');
+  clearTimeout(toast._t);
+  toast._t = setTimeout(()=>el.classList.remove('show'), 1800);
+}
+
+document.querySelectorAll('[data-copy]').forEach(el => {
+  el.addEventListener('click', () => {
+    navigator.clipboard.writeText(el.dataset.copy);
+    toast('Copied: ' + el.dataset.copy.slice(0, 60));
+  });
+});
+
+async function act(path) {
+  toast(path + '…');
+  const r = await fetch('/nodes/' + encodeURIComponent(NODE) + '/' + path, { method:'POST', headers:{ Authorization: AUTH } });
+  if (r.ok) { toast('OK'); loadStatus(); loadLogs(); }
+  else       toast('Failed (' + r.status + ')');
+}
+
+function fmtTime(s) {
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d) return d+'d '+h+'h';
+  if (h) return h+'h '+m+'m';
+  return m+'m';
+}
+
+async function loadStatus() {
+  if (IS_HUB) return;
+  try {
+    const r = await fetch('/nodes/' + encodeURIComponent(NODE) + '/agent-status', { headers:{ Authorization: AUTH } });
+    const d = await r.json();
+    const reachable = r.ok;
+    document.getElementById('dot').className = 'dot ' + (reachable && d.active ? 'on' : 'off');
+    document.getElementById('st-state').textContent = !reachable ? 'agent unreachable' : (d.active ? '3proxy running' : '3proxy stopped');
+    document.getElementById('st-host').textContent  = d.hostname || '—';
+    document.getElementById('st-up').textContent    = d.uptime ? fmtTime(d.uptime) : '—';
+    document.getElementById('st-load').textContent  = d.loadavg?.[0]?.toFixed(2) || '—';
+  } catch (e) {
+    document.getElementById('dot').className = 'dot off';
+    document.getElementById('st-state').textContent = 'unreachable';
+  }
+}
+
+async function loadLogs() {
+  if (IS_HUB) return;
+  try {
+    const r = await fetch('/nodes/' + encodeURIComponent(NODE) + '/logs?n=120', { headers:{ Authorization: AUTH } });
+    const t = await r.text();
+    const el = document.getElementById('logs');
+    const wasAtBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 20;
+    el.textContent = t || '(no logs)';
+    if (wasAtBottom) el.scrollTop = el.scrollHeight;
+  } catch {}
+}
+
+loadStatus();
+loadLogs();
+setInterval(loadStatus, 5000);
+setInterval(loadLogs,   5000);
+</script>
+</body></html>`);
+});
+
+function escapeHtml(s) {
+    return (s == null ? '' : String(s))
+        .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+        .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
 // ─── EXTENSION API ───────────────────────────────────────────────────────────
 app.use('/ext', (req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -763,4 +1266,6 @@ app.listen(PORT,'0.0.0.0', () => {
     console.log(`IP Auth: ${settings.ipAuthEnabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`Hotloop: ${hotloop.enabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`Port routes: ${Object.keys(portRoutes).length} configured`);
+    console.log(`Hub token: ${HUB_TOKEN_FILE} (${HUB_TOKEN_VALUE.slice(0,8)}…)`);
+    addNotif('info', 'Hub dashboard started');
 });
