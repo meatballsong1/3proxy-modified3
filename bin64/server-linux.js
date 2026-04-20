@@ -918,6 +918,14 @@ setInterval(checkPortHealth, 30000);
 setTimeout(checkPortHealth, 5000);
 
 // ─── NOTIFICATIONS ───────────────────────────────────────────────────────────
+app.use('/notifications', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Access-Key');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
+
 app.get('/notifications', (req, res) => {
     res.json({ notifications });
 });
@@ -1175,6 +1183,14 @@ app.get('/ext/check', (req, res) => {
 });
 
 // ─── ACCESS KEYS API ─────────────────────────────────────────────────────────
+app.use('/keys', (req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Access-Key');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    if (req.method === 'OPTIONS') return res.sendStatus(200);
+    next();
+});
+
 app.get('/keys', (req, res) => {
     res.json({ keys: accessKeys });
 });
