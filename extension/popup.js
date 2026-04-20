@@ -199,9 +199,10 @@ function renderNodes() {
             layer.appendChild(tooltip);
 
             const updateTooltip = () => {
-                const rect = item.getBoundingClientRect();
+                const label = item.querySelector('.item-name');
+                const rect = label ? label.getBoundingClientRect() : item.getBoundingClientRect();
                 tooltip.style.left = `${rect.left + rect.width / 2}px`;
-                tooltip.style.top = `${rect.top - 10}px`;
+                tooltip.style.top = `${rect.top - 8}px`;
             };
 
             const showTooltip = () => {
