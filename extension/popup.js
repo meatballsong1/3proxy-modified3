@@ -143,6 +143,7 @@ function renderNodes() {
     }
 
     list.innerHTML = '';
+    document.querySelectorAll('.node-tooltip').forEach(el=>el.remove());
 
     const sorted = [...nodes].sort((a, b) => {
         if (a.online !== b.online) return a.online ? -1 : 1;
@@ -184,18 +185,35 @@ function renderNodes() {
             ? `<span class="item-ping ${pingClass(n.latencyMs)}"><span class="ping-dot"></span>${n.latencyMs}ms</span>`
             : (canUse ? `<span class="item-ping"><span class="ping-dot"></span>—</span>` : '');
 
-        const tooltipHtml = reason 
-            ? `<div class="node-tooltip" title="${escapeHtml(reason)}">${escapeHtml(reason)}</div>`
-            : '';
-
         item.innerHTML = `
-            ${tooltipHtml}
             <div class="item-icon">${ICONS.node}</div>
             <div class="item-main">
                 <div class="item-name">${escapeHtml(n.name)}${badge}</div>
                 <div class="item-sub">${escapeHtml(n.region || '—')} · ${portNote}</div>
             </div>
             ${pingHtml}`;
+
+        if (reason) {
+            const tooltip = el('div', 'node-tooltip', escapeHtml(reason));
+            const layer = $('tooltipLayer') || document.body;
+            layer.appendChild(tooltip);
+
+            const updateTooltip = () => {
+                const rect = item.getBoundingClientRect();
+                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.top = `${rect.top - 10}px`;
+            };
+
+            const showTooltip = () => {
+                updateTooltip();
+                tooltip.classList.add('show');
+            };
+            const hideTooltip = () => tooltip.classList.remove('show');
+
+            item.addEventListener('mouseenter', showTooltip);
+            item.addEventListener('mouseleave', hideTooltip);
+            item.addEventListener('mousemove', updateTooltip);
+        }
 
         if (canUse) item.addEventListener('click', () => pickProfile(profId));
         list.appendChild(item);
