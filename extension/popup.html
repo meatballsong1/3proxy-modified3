@@ -280,7 +280,7 @@
     position: fixed;
     left: 0;
     top: 0;
-    background: rgba(15, 23, 42, 1);
+    background: rgba(15, 23, 42, .96);
     color: #f8fafc;
     padding: 8px 12px;
     border-radius: 14px;
@@ -288,12 +288,12 @@
     white-space: nowrap;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .15s ease, transform .15s ease;
+    transition: opacity .18s ease, transform .18s ease, box-shadow .18s ease;
     z-index: 9999;
-    box-shadow: 0 0 18px rgba(59, 130, 246, .35), 0 8px 28px rgba(15, 23, 42, .35);
-    border: 1px solid rgba(59, 130, 246, .55);
-    text-shadow: 0 0 6px rgba(56, 189, 248, .2);
-    transform: translate(-50%, 6px);
+    box-shadow: 0 0 18px rgba(59, 130, 246, .18), 0 8px 28px rgba(15, 23, 42, .25);
+    border: 1px solid var(--tooltip-border, rgba(59, 130, 246, .55));
+    text-shadow: 0 0 6px rgba(56, 189, 248, .15);
+    transform: translate(calc(-50% + 8px), 6px);
   }
   .node-tooltip::after {
     content: '';
@@ -302,11 +302,18 @@
     left: 50%;
     transform: translateX(-50%);
     border: 5px solid transparent;
-    border-top-color: rgba(15, 23, 42, 1);
+    border-top-color: rgba(15, 23, 42, .96);
   }
   .node-tooltip.show {
-    opacity: 1;
-    transform: translate(-50%, 0);
+    opacity: 0.85;
+    transform: translate(calc(-50% + 8px), 0);
+    box-shadow: 0 0 28px var(--tooltip-border, rgba(59, 130, 246, .55)), 0 10px 32px rgba(15, 23, 42, .25);
+    animation: heartbeat 1.6s ease-in-out infinite;
+  }
+  @keyframes heartbeat {
+    0%, 100% { transform: translate(calc(-50% + 8px), 0) scale(1); }
+    30% { transform: translate(calc(-50% + 8px), 0) scale(1.02); }
+    60% { transform: translate(calc(-50% + 8px), 0) scale(0.99); }
   }
 
   .item-icon {
@@ -364,37 +371,6 @@
   .badge-maint { background: var(--warning-soft); color: var(--warning); }
   .badge-off   { background: var(--danger-soft);  color: var(--danger); }
   .badge-coming { background: rgba(34,211,238,.15); color: #22d3ee; border-radius: 10px; }
-
-  .node-tooltip {
-    position: absolute;
-    bottom: calc(100% + 8px);
-    left: 50%;
-    transform: translateX(-50%);
-    background: var(--card);
-    color: var(--text);
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 11px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity .2s;
-    z-index: 1000;
-    box-shadow: 0 4px 12px rgba(0,0,0,.3);
-  }
-  .node-tooltip::after {
-    content: '';
-    position: absolute;
-    bottom: -5px;
-    left: 50%;
-    transform: translateX(-50%);
-    border: 5px solid transparent;
-    border-top-color: var(--card);
-  }
-  .item:hover .node-tooltip {
-    opacity: 0.9;
-    pointer-events: auto;
-  }
 
   .footer {
     margin-top: 12px;
@@ -465,7 +441,23 @@
     border-radius: 16px;
     padding: 32px 28px;
     width: 300px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(34, 211, 238, 0.22);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 0 20px rgba(34, 211, 238, 0.16);
+    transition: all .2s ease;
+  }
+
+  .login-overlay .login-modal,
+  #loginOverlay.show .login-modal {
+    animation: loginGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes loginGlow {
+    from {
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 0 14px rgba(34, 211, 238, 0.12);
+    }
+    to {
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.25), 0 0 32px rgba(34, 211, 238, 0.28);
+    }
   }
 
   .login-title {
@@ -528,7 +520,7 @@
 
   .login-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    box-shadow: 0 0 20px rgba(56, 189, 248, 0.35), 0 6px 18px rgba(56, 189, 248, 0.18);
   }
 
   .login-btn:active {

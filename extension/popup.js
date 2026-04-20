@@ -178,7 +178,7 @@ function renderNodes() {
             reason = n.offlineReason || n.offline_reason || 'Node is offline';
         } else if (!n.online) {
             badge = `<span class="badge badge-off">Down</span>`;
-            reason = 'Connection timeout';
+            reason = n.offlineReason || n.offline_reason || '';
         }
 
         const pingHtml = n.latencyMs != null
@@ -193,15 +193,21 @@ function renderNodes() {
             </div>
             ${pingHtml}`;
 
+        let tooltipColor = 'rgba(59, 130, 246, .55)';
+        if (isComingSoon) tooltipColor = 'rgba(34, 211, 238, .75)';
+        else if (n.maintenance) tooltipColor = 'rgba(245, 158, 11, .75)';
+        else if (!n.enabled) tooltipColor = 'rgba(239, 68, 68, .75)';
+
         if (reason) {
             const tooltip = el('div', 'node-tooltip', escapeHtml(reason));
+            tooltip.style.setProperty('--tooltip-border', tooltipColor);
             const layer = $('tooltipLayer') || document.body;
             layer.appendChild(tooltip);
 
             const updateTooltip = () => {
                 const label = item.querySelector('.item-name');
                 const rect = label ? label.getBoundingClientRect() : item.getBoundingClientRect();
-                tooltip.style.left = `${rect.left + rect.width / 2}px`;
+                tooltip.style.left = `${rect.left + rect.width / 2 + 8}px`;
                 tooltip.style.top = `${rect.top - 8}px`;
             };
 
@@ -392,7 +398,27 @@ async function handleLogin(event) {
     
     errorEl.classList.remove('show');
     
-    // Try to validate the token by saving it and refreshing nodes
+    const hubStorage = await new Promise(resolve => chrome.storage.local.get(['hubApi'], resolve));
+    const hubUrl = (hubStorage.hubApi || state?.hubApi || 'https://vpn.oofbomb.xyz').replace(/\/+$|\s+$/g, '');
+
+    try {
+        const validate = await fetch(`${hubUrl}/keys/validate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: token })
+        });
+        const data = await validate.json();
+
+        if (!validate.ok || !data.valid) {
+            throw new Error(data.error || 'Invalid access token');
+        }
+    } catch (err) {
+        await chrome.storage.local.remove('accessKey');
+        errorEl.textContent = err.message || 'Invalid token';
+        errorEl.classList.add('show');
+        return;
+    }
+
     await chrome.storage.local.set({ accessKey: token });
     
     // Try to refresh nodes to validate the token

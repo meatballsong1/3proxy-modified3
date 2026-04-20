@@ -1180,8 +1180,10 @@ app.get('/keys', (req, res) => {
 });
 
 app.post('/keys', (req, res) => {
-    const { custom, expires } = req.body;
-    const keyValue = custom || generateRandomKey();
+    const customKey = typeof req.body.custom === 'string' ? req.body.custom.trim() : '';
+    const name = typeof req.body.name === 'string' ? req.body.name.trim() : '';
+    const expires = typeof req.body.expires === 'string' && req.body.expires.trim() ? req.body.expires.trim() : null;
+    const keyValue = customKey || generateRandomKey();
     
     if (Object.values(accessKeys).some(k => k.key === keyValue)) {
         return res.status(400).json({ error: 'Key already exists' });
@@ -1190,10 +1192,11 @@ app.post('/keys', (req, res) => {
     const keyId = `key_${Date.now()}`;
     accessKeys[keyId] = {
         key: keyValue,
+        name: name || (customKey ? 'Custom key' : 'Auto-generated key'),
         created: new Date().toISOString(),
-        expires: expires || null,
+        expires,
         enabled: true,
-        custom: !!custom,
+        custom: !!customKey,
     };
     saveKeys();
     res.json({ ok: true, keyId, key: accessKeys[keyId] });
@@ -1203,8 +1206,9 @@ app.put('/keys/:id', (req, res) => {
     const key = accessKeys[req.params.id];
     if (!key) return res.status(404).json({ error: 'Key not found' });
     
-    if (req.body.enabled !== undefined) key.enabled = req.body.enabled;
-    if (req.body.expires !== undefined) key.expires = req.body.expires;
+    if (req.body.enabled !== undefined) key.enabled = !!req.body.enabled;
+    if (req.body.expires !== undefined) key.expires = req.body.expires || null;
+    if (req.body.name !== undefined) key.name = String(req.body.name).trim();
     
     saveKeys();
     res.json({ ok: true, key });

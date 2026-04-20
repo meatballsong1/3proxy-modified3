@@ -729,7 +729,7 @@ td { padding: 9px 12px; font-size: 13px; }
   <div class="card">
     <div class="card-hdr">
       <div><div class="card-title">Access Keys</div><div class="card-sub">Extension authentication tokens</div></div>
-      <button class="btn btn-accent btn-sm" onclick="createRandomKey()">+ Random Key</button>
+      <button class="btn btn-accent btn-sm" onclick="openCreateKeyModal()">Create Key</button>
     </div>
     <div id="keysTableWrap">
       <div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">Loading keys…</div>
@@ -904,6 +904,29 @@ td { padding: 9px 12px; font-size: 13px; }
       <button class="btn btn-ghost btn-sm" onclick="closeModal('tsConfigModal')">Cancel</button>
       <button class="btn btn-accent btn-sm" onclick="saveTsConfig()">Save</button>
     </div>
+  </div>
+</div>
+
+<!-- Key Modal -->
+<div id="keyModal" class="modal-back" onclick="mbClose(event,'keyModal')">
+  <div class="modal">
+    <div class="modal-hdr"><div class="modal-title" id="keyModalTitle">Create Access Key</div><button class="modal-x" onclick="closeModal('keyModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+    <input type="hidden" id="keyModalId">
+    <div class="flabel">Key name</div>
+    <div class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 18h16M4 12h16"/></svg><input type="text" id="keyModalName" placeholder="Support token or service name"></div>
+    <div class="flabel">Access key</div>
+    <div class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg><input type="text" id="keyModalValue" placeholder="Leave blank to auto-generate"></div>
+    <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px">
+      <button class="btn btn-ghost btn-sm" type="button" onclick="generateKeyValue()">Generate</button>
+      <span style="font-size:12px;color:var(--text2)">Leave blank to auto-generate</span>
+    </div>
+    <div class="flabel">Expiration date</div>
+    <div class="iw"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14M7 4V2M17 4V2M4 8h16M5 8V20h14V8"/></svg><input type="date" id="keyModalExpire"></div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:14px;gap:12px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2)"><input type="checkbox" id="keyModalEnabled" checked> Enabled</label>
+      <button class="btn btn-accent btn-sm" type="button" onclick="saveKeyModal()">Save Key</button>
+    </div>
+    <div id="keyModalHelp" style="font-size:12px;color:var(--text3);margin-top:10px">Create a new key with an optional name and expiration.</div>
   </div>
 </div>
 
@@ -1569,12 +1592,13 @@ function renderKeys() {
     const status = getStatus(key);
     return `
       <div style="border:1px solid var(--border);border-radius:9px;padding:14px;margin-bottom:10px;background:var(--s2);display:flex;align-items:center;justify-content:space-between;gap:14px;transition:all .2s">
-        <div style="display:flex;align-items:center;gap:12px;flex:1;min-width:0">
-          <div style="flex-shrink:0;width:36px;height:36px;background:var(--accentg);border-radius:8px;display:flex;align-items:center;justify-content:center;font-weight:600;color:var(--accent);font-size:18px">🔑</div>
-          <div style="flex:1;min-width:0">
-            <div style="font-family:var(--mono);font-size:12px;background:var(--s1);padding:8px 12px;border-radius:7px;border:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;line-height:1.5" onclick="navigator.clipboard.writeText('${key.key}');toast('Copied!','success')" title="Click to copy">${key.key}</div>
-            <div style="font-size:11px;color:var(--text3);margin-top:5px">Created ${formatDate(key.created)}</div>
+        <div style="display:flex;flex-direction:column;gap:10px;flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+            <div style="font-size:13px;font-weight:700;color:var(--text);">${key.name || 'Untitled key'}</div>
+            <button onclick="openEditKeyModal('${id}')" style="padding:7px 12px;border:1px solid var(--border);border-radius:8px;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;transition:all .15s;font-weight:600">Modify</button>
           </div>
+          <div style="font-family:var(--mono);font-size:12px;background:var(--s1);padding:8px 12px;border-radius:7px;border:1px solid var(--border);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;line-height:1.5" onclick="navigator.clipboard.writeText('${key.key}');toast('Copied!','success')" title="Click to copy">${key.key}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:0">Created ${formatDate(key.created)}</div>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;min-width:fit-content">
           <span class="badge ${status.class}" style="padding:6px 10px;border-radius:6px;font-size:11px;white-space:nowrap">${status.icon} ${status.text}</span>
@@ -1594,13 +1618,72 @@ function renderKeys() {
   el.innerHTML = `<div style="margin-top:14px">${html}</div>`;
 }
 
-async function createRandomKey() {
-  const r = await fetch('/keys', {method:'POST',headers:{...Object.fromEntries(AH),'Content-Type':'application/json'},body:JSON.stringify({})}).catch(()=>null);
+function openCreateKeyModal() {
+  keyModalMode = 'create';
+  document.getElementById('keyModalTitle').textContent = 'Create Access Key';
+  document.getElementById('keyModalId').value = '';
+  document.getElementById('keyModalName').value = '';
+  document.getElementById('keyModalValue').value = '';
+  document.getElementById('keyModalExpire').value = '';
+  document.getElementById('keyModalEnabled').checked = true;
+  document.getElementById('keyModalValue').removeAttribute('readonly');
+  document.getElementById('keyModalHelp').textContent = 'Create a new key with an optional name and expiration.';
+  openModal('keyModal');
+}
+
+function openEditKeyModal(id) {
+  const key = keysData[id];
+  if (!key) return;
+  keyModalMode = 'edit';
+  document.getElementById('keyModalTitle').textContent = 'Modify Access Key';
+  document.getElementById('keyModalId').value = id;
+  document.getElementById('keyModalName').value = key.name || '';
+  document.getElementById('keyModalValue').value = key.key || '';
+  document.getElementById('keyModalExpire').value = key.expires ? new Date(key.expires).toISOString().slice(0, 10) : '';
+  document.getElementById('keyModalEnabled').checked = key.enabled !== false;
+  document.getElementById('keyModalValue').setAttribute('readonly', 'readonly');
+  document.getElementById('keyModalHelp').textContent = 'You can update the name, expiration date, and enabled state.';
+  openModal('keyModal');
+}
+
+function generateKeyValue() {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let out = ''; for (let i = 0; i < 24; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  document.getElementById('keyModalValue').value = `ph-${out}`;
+}
+
+async function saveKeyModal(event) {
+  if (event) event.preventDefault();
+  const id = document.getElementById('keyModalId').value;
+  const name = document.getElementById('keyModalName').value.trim() || null;
+  const value = document.getElementById('keyModalValue').value.trim() || null;
+  const expires = document.getElementById('keyModalExpire').value || null;
+  const enabled = document.getElementById('keyModalEnabled').checked;
+
+  if (keyModalMode === 'create') {
+    const body = { name, expires, enabled };
+    if (value) body.custom = value;
+    const r = await fetch('/keys', { method: 'POST', headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
+    if (r?.ok) {
+      toast('Key created', 'success');
+      closeModal('keyModal');
+      fetchKeys();
+      return;
+    }
+    const err = await r?.json().catch(() => null);
+    toast(err?.error || 'Failed to create key', 'error');
+    return;
+  }
+
+  const body = { name, expires, enabled };
+  const r = await fetch(`/keys/${encodeURIComponent(id)}`, { method: 'PUT', headers: { ...Object.fromEntries(AH), 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => null);
   if (r?.ok) {
-    toast('Key created', 'success');
+    toast('Key updated', 'success');
+    closeModal('keyModal');
     fetchKeys();
   } else {
-    toast('Failed to create key', 'error');
+    const err = await r?.json().catch(() => null);
+    toast(err?.error || 'Failed to update key', 'error');
   }
 }
 
